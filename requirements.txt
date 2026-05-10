@@ -1,4 +1,9 @@
-pyrogram==2.0.106
-py-tgcalls==2.2.8
-tgcrypto==1.2.5
-aiohttp>=3.8.0
+# For Telegram Bot API & User Account
+pyrofork
+tgcrypto
+
+# For Voice Chat Streaming
+py-tgcalls
+
+# For Fetching Xtream API
+aiohttp
