@@ -1,9 +1,5 @@
-# For Telegram Bot API & User Account
 pyrofork
 tgcrypto
-
-# For Voice Chat Streaming
 py-tgcalls
-
-# For Fetching Xtream API
 aiohttp
+flask
