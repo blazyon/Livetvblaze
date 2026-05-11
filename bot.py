@@ -42,7 +42,38 @@ user_app = Client("user_session", api_id=API_ID, api_hash=API_HASH, session_stri
 call_py = PyTgCalls(user_app)
 
 CHANNELS = {}
-active_chats = set()  # Track active streaming chats
+active_chats = set()
+
+# ================= Stream URL Handler =================
+def normalize_stream_url(url: str) -> tuple:
+    """
+    Detect link type and return the correct media path & custom ffmpeg params.
+    Returns (processed_url, ffmpeg_parameters)
+    """
+    url = url.strip()
+    
+    # Common connection parameters for unstable links
+    reconnect_params = "-reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 10"
+    timeout_params = "-timeout 10000000"
+    
+    # 1. API Redirect links (vercel, api endpoints)
+    if "vercel.app/api/play" in url or "/api/play?id=" in url or "api/play" in url:
+        return url, f"{reconnect_params} {timeout_params} -user_agent \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36\" -http_persistent 1"
+    
+    # 2. Direct .ts segment links
+    if url.endswith('.ts'):
+        return url, f"{reconnect_params} {timeout_params} -analyzeduration 10000000 -probesize 10000000"
+    
+    # 3. HTTP (non-SSL) links on custom ports
+    if url.startswith("http://"):
+        return url, f"{reconnect_params} {timeout_params} -multiple_requests 1 -http_persistent 0"
+    
+    # 4. HTTPS m3u8 links
+    if ".m3u8" in url:
+        return url, f"{reconnect_params} {timeout_params}"
+    
+    # 5. Fallback for any other link type
+    return url, f"{reconnect_params} {timeout_params} -analyzeduration 10000000 -probesize 10000000"
 
 # ================= General Commands =================
 @app.on_message(filters.command("start"))
@@ -80,51 +111,88 @@ async def play_live_tv(client, message):
     if len(message.command) < 2:
         return await message.reply(
             "**Usage:** `/livetv <Channel Name>`\n\n"
-            "Example: `/livetv Star Sports`\n\n"
-            "Use `/channels` to see all available channel names."
+            "Example: `/livetv Star Sports`"
         )
     
     channel_name = message.text.split(None, 1)[1].strip().lower()
     
     if channel_name not in CHANNELS:
         return await message.reply(
-            f"❌ **Channel not found!**\n\n"
-            f"Use `/channels` to see the exact names.\n"
-            f"Make sure to type the name exactly as shown."
+            f"❌ **Channel not found!**\nUse `/channels` for the exact list."
         )
     
-    stream_url = CHANNELS[channel_name]
-    msg = await message.reply(f"⏳ **Connecting...**\n📺 Channel: {channel_name.title()}\n📊 Quality: 360p\n\nPlease wait...")
+    raw_url = CHANNELS[channel_name]
+    
+    # Detect link type for user info
+    if "api/play" in raw_url:
+        link_type = "API Redirect"
+    elif raw_url.endswith('.ts'):
+        link_type = "TS Segment"
+    elif raw_url.startswith("http://"):
+        link_type = "HTTP Stream"
+    elif ".m3u8" in raw_url:
+        link_type = "HLS Stream"
+    else:
+        link_type = "Custom Stream"
+    
+    msg = await message.reply(
+        f"⏳ **Connecting...**\n"
+        f"📺 Channel: {channel_name.title()}\n"
+        f"🔗 Type: {link_type}\n"
+        f"📊 Quality: 360p Stable\n\n"
+        f"Please wait..."
+    )
     
     try:
-        # 360p stable streaming configuration
+        # Get the optimized URL and FFmpeg parameters
+        stream_url, custom_ffmpeg = normalize_stream_url(raw_url)
+        
+        # Base stable 360p FFmpeg parameters
+        base_ffmpeg = "-preset ultrafast -tune zerolatency -fflags nobuffer -flags low_delay -strict experimental -bufsize 500k -maxrate 350k"
+        
+        # Combine base + custom parameters
+        combined_ffmpeg = f"{base_ffmpeg} {custom_ffmpeg}"
+        
         await call_py.play(
             chat_id,
             MediaStream(
                 media_path=stream_url,
                 video_parameters=VideoQuality.SD_360p,
                 headers={
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    "Accept": "*/*",
+                    "Accept-Language": "en-US,en;q=0.9",
+                    "Connection": "keep-alive",
+                    "Sec-Fetch-Dest": "video",
+                    "Sec-Fetch-Mode": "cors",
+                    "Sec-Fetch-Site": "cross-site"
                 },
-                ffmpeg_parameters="-reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 5 -preset ultrafast -tune zerolatency -fflags nobuffer -flags low_delay -strict experimental -bufsize 500k -maxrate 350k"
+                ffmpeg_parameters=combined_ffmpeg
             )
         )
         active_chats.add(chat_id)
+        
         await msg.edit_text(
             f"▶️ **Now Playing!**\n"
             f"📺 **Channel:** {channel_name.title()}\n"
             f"📊 **Quality:** 360p Stable\n"
+            f"🔗 **Type:** {link_type}\n"
             f"🎯 **Status:** Live Streaming\n\n"
             f"Use `/stopvc` to stop."
         )
     except Exception as e:
+        error_str = str(e)
+        debug_info = f"Stream URL: {raw_url[:80]}..."
         await msg.edit_text(
             f"❌ **Playback Error!**\n\n"
-            f"**Issue:** `{str(e)[:200]}`\n\n"
+            f"**Issue:** `{error_str[:200]}`\n\n"
+            f"**Debug Info:**\n`{debug_info}`\n\n"
             f"**Troubleshooting:**\n"
             f"• Ensure Voice Chat is active in this chat\n"
             f"• Check if the stream URL is still valid\n"
-            f"• Try again in a few seconds"
+            f"• Try again in a few seconds\n"
+            f"• Some streams may be geo-restricted\n"
+            f"• Contact admin if issue persists"
         )
 
 @app.on_message(filters.command("stopvc") & filters.group)
@@ -176,11 +244,11 @@ async def add_xtream(client, message):
                     
                     for stream in data:
                         name = stream.get("name", "").strip().lower()
-                        if name:  # Only add if name exists
+                        if name:
                             stream_url = f"{url}/live/{user}/{passwd}/{stream.get('stream_id')}.m3u8"
                             CHANNELS[name] = stream_url
                             count += 1
-                            if count <= 10:  # Show first 10 in message
+                            if count <= 10:
                                 added_channels.append(name.title())
                     
                     response = f"✅ **Successfully loaded {count} channels!**\n\n"
