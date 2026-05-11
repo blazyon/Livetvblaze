@@ -1,16 +1,19 @@
 import asyncio
 import aiohttp
 from io import BytesIO
-from pyrogram import Client, filters, idle
+from pyrogram import Client, filters
 from pytgcalls import PyTgCalls
+from pytgcalls import idle as pytgcalls_idle  # ✅ Imported PyTgCalls' own idle
 from pytgcalls.types import MediaStream, VideoQuality
 
 # ================= Configuration =================
-API_ID = 24168862  # Replace with your API ID
-API_HASH = "916a9424dd1e58ab7955001ccc0172b3" # Replace with your API Hash
-BOT_TOKEN = "8544679303:AAEkAqQxF3vRkWqN38Pxp0XCNiWaLiGaw0g" # Replace with your Bot Token
-SESSION_STRING = "AQFwyZ4AGRb0xsBw8mH1-oFL5zJJtWmCGXGLB7N4B4xJ0WC_FTTyEaQ9TTgHqCa_La19Q5C87dMqDqt0dD1oGiipmeFNRGhsTq8igTDPQ7mPuPHqjnCNr9cCqzfL2sPw2pg_t6VQt1AuIb8Z25p0aklNnbLRffl7wtG9zT7fjRRqL_aA3OD99f9kHRy8r40_DYmEHMHRkKygfAafXZYXyasQOO12U1yQMYL_TfClFMi2kBsaulomQBYuYYOHrcbcmIRVSn3wBIWJrCp2T597dfHzIStSkwAjYZ9gt4teTGg_2cb86cTsDygGAC10lp6xpZ6ZODtDpwipB7eydNnznRUHVK00iAAAAAH1rRV2AA" # Replace with User String Session
-OWNER_ID = 8717767927 # Replace with the Telegram ID of the Owner
+# 🚨 WARNING: Please reset your Session String and Bot Token after your bot is working! 
+# They are currently exposed since you shared them.
+API_ID = 24168862  
+API_HASH = "916a9424dd1e58ab7955001ccc0172b3" 
+BOT_TOKEN = "8544679303:AAEkAqQxF3vRkWqN38Pxp0XCNiWaLiGaw0g" 
+SESSION_STRING = "AQFwyZ4AGRb0xsBw8mH1-oFL5zJJtWmCGXGLB7N4B4xJ0WC_FTTyEaQ9TTgHqCa_La19Q5C87dMqDqt0dD1oGiipmeFNRGhsTq8igTDPQ7mPuPHqjnCNr9cCqzfL2sPw2pg_t6VQt1AuIb8Z25p0aklNnbLRffl7wtG9zT7fjRRqL_aA3OD99f9kHRy8r40_DYmEHMHRkKygfAafXZYXyasQOO12U1yQMYL_TfClFMi2kBsaulomQBYuYYOHrcbcmIRVSn3wBIWJrCp2T597dfHzIStSkwAjYZ9gt4teTGg_2cb86cTsDygGAC10lp6xpZ6ZODtDpwipB7eydNnznRUHVK00iAAAAAH1rRV2AA" 
+OWNER_ID = 8717767927 
 
 # ================= Initialize Clients =================
 app = Client("tv_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
@@ -54,7 +57,6 @@ async def play_live_tv(client, message):
     msg = await message.reply(f"⏳ Connecting **{channel_name.title()}** to the Voice Chat...")
     
     try:
-        # Since we are on a cloud server, we can upgrade to 720p!
         await call_py.play(
             chat_id,
             MediaStream(
@@ -135,12 +137,16 @@ async def delete_channel(client, message):
 async def main():
     print("Starting Bot Client...")
     await app.start()
-    print("Starting User Client...")
-    await user_app.start()
-    print("Starting PyTgCalls...")
-    await call_py.start()
+    
+    print("Starting User Client & PyTgCalls...")
+    await user_app.start() # Ensure User App starts properly first
+    await call_py.start()  # Then bind PyTgCalls to it
+    
     print("✅ Bot is fully running! Press Ctrl+C to stop.")
-    await idle()
+    
+    # ✅ Fixed: Using PyTgCalls native idle to keep the connection alive
+    await pytgcalls_idle()
 
 if __name__ == "__main__":
-    asyncio.get_event_loop().run_until_complete(main())
+    # ✅ Fixed: Using asyncio.run() properly starts the event loop
+    asyncio.run(main())
