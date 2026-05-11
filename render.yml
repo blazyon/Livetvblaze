@@ -3,19 +3,10 @@ services:
     name: telegram-tv-bot
     env: python
     region: oregon
-    plan: free
-    buildCommand: |
-      apt-get update && apt-get install -y ffmpeg
-      pip install --upgrade pip
-      pip install -r requirements.txt
+    buildCommand: pip install -r requirements.txt
     startCommand: python bot.py
     healthCheckPath: /health
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
-      - key: PORT
-        value: 8080
     autoDeploy: true
-    scaling:
-      minInstances: 1
-      maxInstances: 1
