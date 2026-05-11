@@ -1,19 +1,16 @@
 import asyncio
 import aiohttp
-from aiohttp import web  # ✅ Imported for the Choreo web server
 from io import BytesIO
-from pyrogram import Client, filters
+from pyrogram import Client, filters, idle
 from pytgcalls import PyTgCalls
-from pytgcalls import idle as pytgcalls_idle  # ✅ Imported PyTgCalls' own idle
 from pytgcalls.types import MediaStream, VideoQuality
 
 # ================= Configuration =================
-# 🚨 WARNING: Please reset your Session String and Bot Token after your bot is working! 
-API_ID = 24168862  
-API_HASH = "916a9424dd1e58ab7955001ccc0172b3" 
-BOT_TOKEN = "8544679303:AAFW5OwWCbQ969yjP2lgaHReWv4Bg6Iqdas" 
-SESSION_STRING = "AQFwyZ4AQIYVMp0lZPimo8SGiPHWKWz3abADxyPoBxoJZGz951EGeKdCgdBq4WSt6PKzK0Po0QBjZ_763G4Dljz8CyVjym4iZpGKGTi9WDBotthR06zuS1WgapVzCIPxflHjlqee7WC3eLyorj-RF2_8vEP28vyrPgSt7VK67iONk0Aj5BQlLBzBZ72ofaUkTbKzniBjcvftjlEtluoJboImLD3cuFWAClSGqzFmLXx7dJIz--d2Y49g3KdsZAvmuGIt9pQP93BY1DV_WqJ4EmYUfRq4KNRPf37irjDDwO4BOZhtfXh-fE1mb17I75gNlrWqBXBxKrLyR1QqFBVm_Bm-6ibPZQAAAAH1rRV2AA" 
-OWNER_ID = 8717767927 
+API_ID = 24168862  # Replace with your API ID
+API_HASH = "916a9424dd1e58ab7955001ccc0172b3" # Replace with your API Hash
+BOT_TOKEN = "8544679303:AAFW5OwWCbQ969yjP2lgaHReWv4Bg6Iqdas" # Replace with your Bot Token
+SESSION_STRING = "AQFwyZ4AQIYVMp0lZPimo8SGiPHWKWz3abADxyPoBxoJZGz951EGeKdCgdBq4WSt6PKzK0Po0QBjZ_763G4Dljz8CyVjym4iZpGKGTi9WDBotthR06zuS1WgapVzCIPxflHjlqee7WC3eLyorj-RF2_8vEP28vyrPgSt7VK67iONk0Aj5BQlLBzBZ72ofaUkTbKzniBjcvftjlEtluoJboImLD3cuFWAClSGqzFmLXx7dJIz--d2Y49g3KdsZAvmuGIt9pQP93BY1DV_WqJ4EmYUfRq4KNRPf37irjDDwO4BOZhtfXh-fE1mb17I75gNlrWqBXBxKrLyR1QqFBVm_Bm-6ibPZQAAAAH1rRV2AA" # Replace with User String Session
+OWNER_ID = 8717767927 # Replace with the Telegram ID of the Owner
 
 # ================= Initialize Clients =================
 app = Client("tv_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
@@ -57,6 +54,7 @@ async def play_live_tv(client, message):
     msg = await message.reply(f"⏳ Connecting **{channel_name.title()}** to the Voice Chat...")
     
     try:
+        # Since we are on a cloud server, we can upgrade to 720p!
         await call_py.play(
             chat_id,
             MediaStream(
@@ -133,37 +131,16 @@ async def delete_channel(client, message):
     else:
         await message.reply("❌ Channel not found.")
 
-# ================= Choreo Health Check Server =================
-async def health_check(request):
-    return web.Response(text="Bot is running successfully!")
-
-async def start_web_server():
-    server = web.Application()
-    server.router.add_get("/", health_check)
-    runner = web.AppRunner(server)
-    await runner.setup()
-    # Opens port 8080 to satisfy Choreo's Service requirement
-    site = web.TCPSite(runner, "0.0.0.0", 8080)
-    await site.start()
-    print("🌐 Dummy web server started on port 8080 for Choreo Health Check")
-
 # ================= Boot Process =================
 async def main():
-    print("Starting Web Server...")
-    await start_web_server()  # ✅ Start the dummy web server first
-    
     print("Starting Bot Client...")
     await app.start()
-    
-    print("Starting User Client & PyTgCalls...")
-    await user_app.start() 
-    await call_py.start()  
-    
+    print("Starting User Client...")
+    await user_app.start()
+    print("Starting PyTgCalls...")
+    await call_py.start()
     print("✅ Bot is fully running! Press Ctrl+C to stop.")
-    
-    # ✅ Fixed: Using PyTgCalls native idle to keep the connection alive
-    await pytgcalls_idle()
+    await idle()
 
 if __name__ == "__main__":
-    # ✅ Fixed: Using asyncio.run() properly starts the event loop
-    asyncio.run(main())
+    asyncio.get_event_loop().run_until_complete(main())
