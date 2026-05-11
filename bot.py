@@ -4,6 +4,8 @@ from io import BytesIO
 from pyrogram import Client, filters, idle
 from pytgcalls import PyTgCalls
 from pytgcalls.types import MediaStream, VideoQuality
+from flask import Flask
+from threading import Thread
 
 # ================= Configuration =================
 API_ID = 24168862  # Replace with your API ID
@@ -11,6 +13,16 @@ API_HASH = "916a9424dd1e58ab7955001ccc0172b3" # Replace with your API Hash
 BOT_TOKEN = "8544679303:AAFW5OwWCbQ969yjP2lgaHReWv4Bg6Iqdas" # Replace with your Bot Token
 SESSION_STRING = "AQFwyZ4AQIYVMp0lZPimo8SGiPHWKWz3abADxyPoBxoJZGz951EGeKdCgdBq4WSt6PKzK0Po0QBjZ_763G4Dljz8CyVjym4iZpGKGTi9WDBotthR06zuS1WgapVzCIPxflHjlqee7WC3eLyorj-RF2_8vEP28vyrPgSt7VK67iONk0Aj5BQlLBzBZ72ofaUkTbKzniBjcvftjlEtluoJboImLD3cuFWAClSGqzFmLXx7dJIz--d2Y49g3KdsZAvmuGIt9pQP93BY1DV_WqJ4EmYUfRq4KNRPf37irjDDwO4BOZhtfXh-fE1mb17I75gNlrWqBXBxKrLyR1QqFBVm_Bm-6ibPZQAAAAH1rRV2AA" # Replace with User String Session
 OWNER_ID = 8717767927 # Replace with the Telegram ID of the Owner
+
+# ================= Flask Server for Render =================
+flask_app = Flask(__name__)
+
+@flask_app.route('/')
+def home():
+    return "Bot is running!"
+
+def run_flask():
+    flask_app.run(host='0.0.0.0', port=8080)
 
 # ================= Initialize Clients =================
 app = Client("tv_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
@@ -54,17 +66,17 @@ async def play_live_tv(client, message):
     msg = await message.reply(f"⏳ Connecting **{channel_name.title()}** to the Voice Chat...")
     
     try:
-        # Since we are on a cloud server, we can upgrade to 720p!
+        # Changed to SD_360p for stable playback without glitches
         await call_py.play(
             chat_id,
             MediaStream(
                 media_path=stream_url,
-                video_parameters=VideoQuality.HD_720p,
+                video_parameters=VideoQuality.SD_360p,
                 headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
-                ffmpeg_parameters="-preset ultrafast -tune zerolatency -fflags nobuffer"
+                ffmpeg_parameters="-preset ultrafast -tune zerolatency -fflags nobuffer -bufsize 500k -maxrate 350k"
             )
         )
-        await msg.edit_text(f"▶️ **Now Playing:** {channel_name.title()} in the Voice Chat!")
+        await msg.edit_text(f"▶️ **Now Playing:** {channel_name.title()} in the Voice Chat!\n📊 Quality: 360p Stable")
     except Exception as e:
         await msg.edit_text(f"❌ Error playing channel. Ensure the Voice Chat is turned on.\n\n`{e}`")
 
@@ -75,6 +87,10 @@ async def stop_vc(client, message):
         await message.reply("⏹ Stopped the stream and left the Voice Chat.")
     except Exception as e:
         await message.reply(f"❌ Could not stop: `{e}`")
+
+@app.on_message(filters.command("ping"))
+async def ping_cmd(client, message):
+    await message.reply("🏓 **Pong!** Bot is active and running!")
 
 # ================= Owner Commands =================
 @app.on_message(filters.command("addxtream") & filters.user(OWNER_ID))
@@ -131,8 +147,19 @@ async def delete_channel(client, message):
     else:
         await message.reply("❌ Channel not found.")
 
+# ================= Keep Alive Handler =================
+@app.on_message(filters.command("keepalive"))
+async def keep_alive(client, message):
+    await message.reply("✅ **Bot is alive and streaming!**")
+
 # ================= Boot Process =================
 async def main():
+    # Start Flask server in a separate thread
+    flask_thread = Thread(target=run_flask)
+    flask_thread.daemon = True
+    flask_thread.start()
+    print("🌐 Flask server started on port 8080")
+    
     print("Starting Bot Client...")
     await app.start()
     print("Starting User Client...")
@@ -140,6 +167,13 @@ async def main():
     print("Starting PyTgCalls...")
     await call_py.start()
     print("✅ Bot is fully running! Press Ctrl+C to stop.")
+    
+    # Send startup notification to owner
+    try:
+        await app.send_message(OWNER_ID, "🟢 **Bot has been deployed and is now online!**\n\n✅ All systems operational\n📊 Default quality: 360p Stable\n🌐 HTTP Server: Active")
+    except:
+        pass
+    
     await idle()
 
 if __name__ == "__main__":
