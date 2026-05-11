@@ -1,5 +1,6 @@
 import asyncio
 import aiohttp
+from aiohttp import web  # ✅ Imported for the Choreo web server
 from io import BytesIO
 from pyrogram import Client, filters
 from pytgcalls import PyTgCalls
@@ -8,7 +9,6 @@ from pytgcalls.types import MediaStream, VideoQuality
 
 # ================= Configuration =================
 # 🚨 WARNING: Please reset your Session String and Bot Token after your bot is working! 
-# They are currently exposed since you shared them.
 API_ID = 24168862  
 API_HASH = "916a9424dd1e58ab7955001ccc0172b3" 
 BOT_TOKEN = "8544679303:AAEkAqQxF3vRkWqN38Pxp0XCNiWaLiGaw0g" 
@@ -133,14 +133,31 @@ async def delete_channel(client, message):
     else:
         await message.reply("❌ Channel not found.")
 
+# ================= Choreo Health Check Server =================
+async def health_check(request):
+    return web.Response(text="Bot is running successfully!")
+
+async def start_web_server():
+    server = web.Application()
+    server.router.add_get("/", health_check)
+    runner = web.AppRunner(server)
+    await runner.setup()
+    # Opens port 8080 to satisfy Choreo's Service requirement
+    site = web.TCPSite(runner, "0.0.0.0", 8080)
+    await site.start()
+    print("🌐 Dummy web server started on port 8080 for Choreo Health Check")
+
 # ================= Boot Process =================
 async def main():
+    print("Starting Web Server...")
+    await start_web_server()  # ✅ Start the dummy web server first
+    
     print("Starting Bot Client...")
     await app.start()
     
     print("Starting User Client & PyTgCalls...")
-    await user_app.start() # Ensure User App starts properly first
-    await call_py.start()  # Then bind PyTgCalls to it
+    await user_app.start() 
+    await call_py.start()  
     
     print("✅ Bot is fully running! Press Ctrl+C to stop.")
     
