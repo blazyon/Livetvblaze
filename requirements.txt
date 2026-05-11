@@ -1,15 +1,12 @@
 # Telegram Bot API & User Account
-pyrofork==2.0.106
-tgcrypto==1.2.5
+pyrofork
+tgcrypto
 
 # Voice Chat Streaming
-py-tgcalls==2.1.0
+py-tgcalls
 
 # Fetching Xtream API
-aiohttp==3.9.1
+aiohttp
 
 # HTTP Server for Render
-flask==3.0.0
-
-# Additional dependencies
-gunicorn==21.2.0
+flask
