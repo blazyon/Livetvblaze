@@ -1,12 +1,6 @@
-# Telegram Bot API & User Account
 pyrofork
 tgcrypto
-
-# Voice Chat Streaming
 py-tgcalls
-
-# Fetching Xtream API
 aiohttp
-
-# HTTP Server for Render
 flask
+gunicorn
