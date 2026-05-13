@@ -1,6 +1,7 @@
 import asyncio
 import aiohttp
 from io import BytesIO
+from urllib.parse import urlparse
 from pyrogram import Client, filters, idle
 from pytgcalls import PyTgCalls
 from pytgcalls.types import MediaStream, VideoQuality
@@ -36,16 +37,19 @@ BROWSER_HEADERS = {
     "Cache-Control": "no-cache",
 }
 
-# Special headers for Amagi/restricted streams
-AMAGI_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-    "Accept": "*/*",
-    "Origin": "https://playout.now3.amagi.tv",
-    "Referer": "https://playout.now3.amagi.tv/",
-    "Sec-Fetch-Dest": "empty",
-    "Sec-Fetch-Mode": "cors",
-    "Sec-Fetch-Site": "cross-site",
-}
+# Dynamically generate headers to match the stream's exact Origin/Subdomain
+def get_amagi_headers(url):
+    parsed = urlparse(url)
+    base_url = f"{parsed.scheme}://{parsed.netloc}"
+    return {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept": "*/*",
+        "Origin": base_url,
+        "Referer": base_url + "/",
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "cross-site",
+    }
 
 # ================= Flask Server =================
 flask_app = Flask(__name__)
@@ -88,16 +92,16 @@ QUALITY_PRESETS = {
 # Optimized FFmpeg configs for different stream types
 FFMPEG_CONFIGS = {
     "amagi": {
-        "360p": "-preset ultrafast -tune zerolatency -fflags +nobuffer+genpts -flags low_delay -strict experimental -bufsize 500k -maxrate 350k -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 10 -timeout 15000000 -analyzeduration 10000000 -probesize 10000000 -headers 'Referer: https://playout.now3.amagi.tv/\r\nOrigin: https://playout.now3.amagi.tv'",
-        "480p": "-preset fast -tune zerolatency -fflags +nobuffer+genpts -flags low_delay -strict experimental -bufsize 800k -maxrate 600k -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 10 -timeout 15000000 -analyzeduration 10000000 -probesize 10000000 -headers 'Referer: https://playout.now3.amagi.tv/\r\nOrigin: https://playout.now3.amagi.tv'",
-        "720p": "-preset fast -tune zerolatency -fflags +nobuffer+genpts -flags low_delay -strict experimental -bufsize 1500k -maxrate 1200k -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 10 -timeout 15000000 -analyzeduration 10000000 -probesize 10000000 -headers 'Referer: https://playout.now3.amagi.tv/\r\nOrigin: https://playout.now3.amagi.tv'",
-        "1080p": "-preset fast -tune zerolatency -fflags +nobuffer+genpts -flags low_delay -strict experimental -bufsize 2000k -maxrate 1800k -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 10 -timeout 15000000 -analyzeduration 10000000 -probesize 10000000 -headers 'Referer: https://playout.now3.amagi.tv/\r\nOrigin: https://playout.now3.amagi.tv'",
+        "360p": "-preset ultrafast -tune zerolatency -fflags +nobuffer+genpts -flags low_delay -strict experimental -bufsize 500k -maxrate 350k -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 10 -timeout 15000000 -analyzeduration 10000000 -probesize 10000000 -allowed_extensions ALL",
+        "480p": "-preset fast -tune zerolatency -fflags +nobuffer+genpts -flags low_delay -strict experimental -bufsize 800k -maxrate 600k -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 10 -timeout 15000000 -analyzeduration 10000000 -probesize 10000000 -allowed_extensions ALL",
+        "720p": "-preset fast -tune zerolatency -fflags +nobuffer+genpts -flags low_delay -strict experimental -bufsize 1500k -maxrate 1200k -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 10 -timeout 15000000 -analyzeduration 10000000 -probesize 10000000 -allowed_extensions ALL",
+        "1080p": "-preset fast -tune zerolatency -fflags +nobuffer+genpts -flags low_delay -strict experimental -bufsize 2000k -maxrate 1800k -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 10 -timeout 15000000 -analyzeduration 10000000 -probesize 10000000 -allowed_extensions ALL",
     },
     "direct": {
-        "360p": "-preset ultrafast -tune zerolatency -fflags nobuffer -flags low_delay -strict experimental -bufsize 500k -maxrate 350k -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 5 -timeout 10000000",
-        "480p": "-preset fast -tune zerolatency -fflags nobuffer -flags low_delay -strict experimental -bufsize 800k -maxrate 600k -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 5 -timeout 10000000",
-        "720p": "-preset fast -tune zerolatency -fflags nobuffer -flags low_delay -strict experimental -bufsize 1500k -maxrate 1200k -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 5 -timeout 10000000",
-        "1080p": "-preset fast -tune zerolatency -fflags nobuffer -flags low_delay -strict experimental -bufsize 2000k -maxrate 1800k -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 5 -timeout 10000000",
+        "360p": "-preset ultrafast -tune zerolatency -fflags nobuffer -flags low_delay -strict experimental -bufsize 500k -maxrate 350k -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 5 -timeout 10000000 -allowed_extensions ALL",
+        "480p": "-preset fast -tune zerolatency -fflags nobuffer -flags low_delay -strict experimental -bufsize 800k -maxrate 600k -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 5 -timeout 10000000 -allowed_extensions ALL",
+        "720p": "-preset fast -tune zerolatency -fflags nobuffer -flags low_delay -strict experimental -bufsize 1500k -maxrate 1200k -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 5 -timeout 10000000 -allowed_extensions ALL",
+        "1080p": "-preset fast -tune zerolatency -fflags nobuffer -flags low_delay -strict experimental -bufsize 2000k -maxrate 1800k -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 5 -timeout 10000000 -allowed_extensions ALL",
     }
 }
 
@@ -126,7 +130,7 @@ def get_headers_for_stream(url):
     stream_type = detect_stream_type(url)
     
     if stream_type == "amagi":
-        return AMAGI_HEADERS
+        return get_amagi_headers(url)
     else:
         return BROWSER_HEADERS
 
@@ -151,7 +155,7 @@ async def test_stream_accessibility(url):
     try:
         # Try with Amagi headers
         async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=AMAGI_HEADERS, timeout=10, allow_redirects=True) as resp:
+            async with session.get(url, headers=get_amagi_headers(url), timeout=10, allow_redirects=True) as resp:
                 if resp.status in [200, 206, 302, 301]:
                     return True
     except:
@@ -160,7 +164,7 @@ async def test_stream_accessibility(url):
     # Try HEAD request
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.head(url, headers=AMAGI_HEADERS, timeout=10, allow_redirects=True) as resp:
+            async with session.head(url, headers=get_amagi_headers(url), timeout=10, allow_redirects=True) as resp:
                 if resp.status != 404:
                     return True
     except:
@@ -316,7 +320,7 @@ async def play_stream(chat_id, channel_name, quality, message):
                     MediaStream(
                         media_path=stream_url,
                         video_parameters=video_quality,
-                        headers=AMAGI_HEADERS,
+                        headers=get_amagi_headers(stream_url),
                         ffmpeg_parameters=get_ffmpeg_config("amagi", quality)
                     )
                 )
@@ -334,7 +338,7 @@ async def play_stream(chat_id, channel_name, quality, message):
                                 media_path=stream_url,
                                 video_parameters=VideoQuality.SD_480p,
                                 headers={"User-Agent": "Mozilla/5.0"},
-                                ffmpeg_parameters="-preset ultrafast -tune zerolatency -fflags +nobuffer+genpts -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -timeout 20000000 -analyzeduration 20000000 -probesize 20000000"
+                                ffmpeg_parameters="-preset ultrafast -tune zerolatency -fflags +nobuffer+genpts -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -timeout 20000000 -analyzeduration 20000000 -probesize 20000000 -allowed_extensions ALL"
                             )
                         )
                         success = True
