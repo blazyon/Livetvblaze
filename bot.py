@@ -89,19 +89,16 @@ QUALITY_PRESETS = {
     "4k": VideoQuality.UHD_4K,
 }
 
-# Optimized FFmpeg configs for different stream types
+# Optimized FFmpeg configs with Protocol Whitelist added
 FFMPEG_CONFIGS = {
     "amagi": {
-        "360p": "-preset ultrafast -tune zerolatency -fflags +nobuffer+genpts -flags low_delay -strict experimental -bufsize 500k -maxrate 350k -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 10 -timeout 15000000 -analyzeduration 10000000 -probesize 10000000 -allowed_extensions ALL",
-        "480p": "-preset fast -tune zerolatency -fflags +nobuffer+genpts -flags low_delay -strict experimental -bufsize 800k -maxrate 600k -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 10 -timeout 15000000 -analyzeduration 10000000 -probesize 10000000 -allowed_extensions ALL",
-        "720p": "-preset fast -tune zerolatency -fflags +nobuffer+genpts -flags low_delay -strict experimental -bufsize 1500k -maxrate 1200k -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 10 -timeout 15000000 -analyzeduration 10000000 -probesize 10000000 -allowed_extensions ALL",
-        "1080p": "-preset fast -tune zerolatency -fflags +nobuffer+genpts -flags low_delay -strict experimental -bufsize 2000k -maxrate 1800k -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 10 -timeout 15000000 -analyzeduration 10000000 -probesize 10000000 -allowed_extensions ALL",
+        "360p": "-preset ultrafast -tune zerolatency -fflags +nobuffer+genpts -flags low_delay -strict experimental -bufsize 500k -maxrate 350k -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 10 -timeout 15000000 -allowed_extensions ALL -protocol_whitelist file,http,https,tcp,tls,crypto",
+        "480p": "-preset fast -tune zerolatency -fflags +nobuffer+genpts -flags low_delay -strict experimental -bufsize 800k -maxrate 600k -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 10 -timeout 15000000 -allowed_extensions ALL -protocol_whitelist file,http,https,tcp,tls,crypto",
+        "720p": "-preset fast -tune zerolatency -fflags +nobuffer+genpts -flags low_delay -strict experimental -bufsize 1500k -maxrate 1200k -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 10 -timeout 15000000 -allowed_extensions ALL -protocol_whitelist file,http,https,tcp,tls,crypto",
+        "1080p": "-preset fast -tune zerolatency -fflags +nobuffer+genpts -flags low_delay -strict experimental -bufsize 2000k -maxrate 1800k -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 10 -timeout 15000000 -allowed_extensions ALL -protocol_whitelist file,http,https,tcp,tls,crypto",
     },
     "direct": {
-        "360p": "-preset ultrafast -tune zerolatency -fflags nobuffer -flags low_delay -strict experimental -bufsize 500k -maxrate 350k -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 5 -timeout 10000000 -allowed_extensions ALL",
-        "480p": "-preset fast -tune zerolatency -fflags nobuffer -flags low_delay -strict experimental -bufsize 800k -maxrate 600k -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 5 -timeout 10000000 -allowed_extensions ALL",
-        "720p": "-preset fast -tune zerolatency -fflags nobuffer -flags low_delay -strict experimental -bufsize 1500k -maxrate 1200k -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 5 -timeout 10000000 -allowed_extensions ALL",
-        "1080p": "-preset fast -tune zerolatency -fflags nobuffer -flags low_delay -strict experimental -bufsize 2000k -maxrate 1800k -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 5 -timeout 10000000 -allowed_extensions ALL",
+        "720p": "-preset fast -tune zerolatency -fflags nobuffer -flags low_delay -strict experimental -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -timeout 10000000 -allowed_extensions ALL -protocol_whitelist file,http,https,tcp,tls,crypto",
     }
 }
 
