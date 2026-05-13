@@ -89,19 +89,6 @@ QUALITY_PRESETS = {
     "4k": VideoQuality.UHD_4K,
 }
 
-# Optimized FFmpeg configs with Protocol Whitelist added
-FFMPEG_CONFIGS = {
-    "amagi": {
-        "360p": "-preset ultrafast -tune zerolatency -fflags +nobuffer+genpts -flags low_delay -strict experimental -bufsize 500k -maxrate 350k -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 10 -timeout 15000000 -allowed_extensions ALL -protocol_whitelist file,http,https,tcp,tls,crypto",
-        "480p": "-preset fast -tune zerolatency -fflags +nobuffer+genpts -flags low_delay -strict experimental -bufsize 800k -maxrate 600k -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 10 -timeout 15000000 -allowed_extensions ALL -protocol_whitelist file,http,https,tcp,tls,crypto",
-        "720p": "-preset fast -tune zerolatency -fflags +nobuffer+genpts -flags low_delay -strict experimental -bufsize 1500k -maxrate 1200k -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 10 -timeout 15000000 -allowed_extensions ALL -protocol_whitelist file,http,https,tcp,tls,crypto",
-        "1080p": "-preset fast -tune zerolatency -fflags +nobuffer+genpts -flags low_delay -strict experimental -bufsize 2000k -maxrate 1800k -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 10 -timeout 15000000 -allowed_extensions ALL -protocol_whitelist file,http,https,tcp,tls,crypto",
-    },
-    "direct": {
-        "720p": "-preset fast -tune zerolatency -fflags nobuffer -flags low_delay -strict experimental -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -timeout 10000000 -allowed_extensions ALL -protocol_whitelist file,http,https,tcp,tls,crypto",
-    }
-}
-
 # ================= Stream Detection =================
 def detect_stream_type(url):
     """Detect stream type from URL"""
@@ -130,12 +117,6 @@ def get_headers_for_stream(url):
         return get_amagi_headers(url)
     else:
         return BROWSER_HEADERS
-
-def get_ffmpeg_config(stream_type, quality):
-    """Get FFmpeg config for stream type and quality"""
-    if stream_type in FFMPEG_CONFIGS:
-        return FFMPEG_CONFIGS[stream_type].get(quality, FFMPEG_CONFIGS[stream_type]["720p"])
-    return FFMPEG_CONFIGS["direct"].get(quality, FFMPEG_CONFIGS["direct"]["720p"])
 
 # ================= Stream Test =================
 async def test_stream_accessibility(url):
@@ -287,63 +268,23 @@ async def play_stream(chat_id, channel_name, quality, message):
         f"⏳ Please wait 5-10 seconds..."
     )
     
-    success = False
-    
-    # Method 1: With detected stream type headers
     try:
+        # Get PyTgCalls Video Quality Object
         video_quality = QUALITY_PRESETS.get(quality, VideoQuality.HD_720p)
-        ffmpeg_config = get_ffmpeg_config(stream_type, quality)
+        
+        # Get Headers (Crucial for Amagi Streams)
         headers = get_headers_for_stream(stream_url)
         
+        # Start pure stream without custom FFmpeg parameters
         await call_py.play(
             chat_id,
             MediaStream(
                 media_path=stream_url,
                 video_parameters=video_quality,
-                headers=headers,
-                ffmpeg_parameters=ffmpeg_config
+                headers=headers
             )
         )
-        success = True
-    except Exception as e1:
-        print(f"Method 1 failed: {str(e1)[:100]}")
         
-        # Method 2: With Amagi-specific headers (even if not detected as Amagi)
-        if not success:
-            try:
-                await asyncio.sleep(2)
-                await call_py.play(
-                    chat_id,
-                    MediaStream(
-                        media_path=stream_url,
-                        video_parameters=video_quality,
-                        headers=get_amagi_headers(stream_url),
-                        ffmpeg_parameters=get_ffmpeg_config("amagi", quality)
-                    )
-                )
-                success = True
-            except Exception as e2:
-                print(f"Method 2 failed: {str(e2)[:100]}")
-                
-                # Method 3: Minimal config - bare bones approach
-                if not success:
-                    try:
-                        await asyncio.sleep(2)
-                        await call_py.play(
-                            chat_id,
-                            MediaStream(
-                                media_path=stream_url,
-                                video_parameters=VideoQuality.SD_480p,
-                                headers={"User-Agent": "Mozilla/5.0"},
-                                ffmpeg_parameters="-preset ultrafast -tune zerolatency -fflags +nobuffer+genpts -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -timeout 20000000 -analyzeduration 20000000 -probesize 20000000 -allowed_extensions ALL"
-                            )
-                        )
-                        success = True
-                        quality_label = "480p (Auto)"
-                    except Exception as e3:
-                        print(f"Method 3 failed: {str(e3)[:100]}")
-    
-    if success:
         active_chats.add(chat_id)
         await msg.edit_text(
             f"▶️ **Now Streaming!**\n\n"
@@ -358,24 +299,22 @@ async def play_stream(chat_id, channel_name, quality, message):
         try:
             await app.send_message(
                 OWNER_ID,
-                f"🟢 Stream ON: {channel_name.title()} ({quality_label})\nType: {stream_type}\nChat: {chat_id}"
+                f"🟢 Stream ON: {channel_name.title()} ({quality_label})\nChat: {chat_id}"
             )
         except:
             pass
-    else:
+            
+    except Exception as e:
+        error_text = str(e)[:200]
+        print(f"Stream Error: {error_text}")
         await msg.edit_text(
             f"❌ **Failed to Play Stream**\n\n"
             f"📺 **Channel:** {channel_name.title()}\n"
-            f"🔧 **Type:** {stream_type.upper()}\n\n"
-            f"**Possible Issues:**\n"
-            f"• Stream URL expired or invalid\n"
-            f"• Requires specific VPN/region\n"
-            f"• Stream is geo-blocked\n"
-            f"• Server is overloaded\n\n"
+            f"⚠️ **Error:** `{error_text}`\n\n"
             f"**Try:**\n"
             f"• Lower quality: `/hqlivetv {channel_name.title()} 360p`\n"
-            f"• Test stream: `/teststream {stream_url[:60]}...`\n"
-            f"• Contact owner for proxy setup"
+            f"• Wait a few seconds and try again\n"
+            f"• Contact owner for proxy setup (If Geo-blocked)"
         )
 
 @app.on_message(filters.command("stopvc") & filters.group)
