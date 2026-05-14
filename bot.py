@@ -3,13 +3,15 @@ import aiohttp
 from io import BytesIO
 from urllib.parse import urlparse
 from pyrogram import Client, filters, idle
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from pyrogram.enums import ChatType
+from pyrogram.errors import UserAlreadyParticipant, InviteRequestSent
 from pytgcalls import PyTgCalls
 from pytgcalls.types import MediaStream, VideoQuality
 from flask import Flask
 from threading import Thread
 import os
 import sys
-import re
 
 # ================= Configuration =================
 API_ID = 35562064
@@ -18,26 +20,44 @@ BOT_TOKEN = "8544679303:AAFW5OwWCbQ969yjP2lgaHReWv4Bg6Iqdas"
 SESSION_STRING = "BQIeolAAJzdrYR4U2486lQZsWMLJvmXSHFEQyAF3S8u2QGzeveB-TJIQX1xiTOtoh_rYHtR3UMARD8J4OB0qLUo6_l8CwKCdo3PqQUM7CdLDJBFEeHqZHa1Gka4O3z3m8D03UTR5SU6ca1HXYEaxdHvX_uYc3RTEVUimXpf4tZ-uY062zWQ61GLs27JHIChMJe9e3jFZzqmH2bTUDH5DxGnF_IwrzDiUCkhSzXjgewp4tWwBMvfebBmnrZnGLUqLGAtfXymO9Xki2eaQlqrU7b9fyF5ROqdr1WR85b7myE9Cck0ilzTJZ6hsAxQELCBhelPA-f2L5NGHBL2R_ah57M1vnpuR3gAAAAH_qqMkAA"
 OWNER_ID = 8717767927
 
-# Railway Port
-PORT = int(os.environ.get("PORT", 8080))
+# High-Tech Branding
+BOT_NAME = "𝙇𝙤𝙘𝙖𝙡 𝙎𝙩𝙧𝙚𝙖𝙢 𝙏𝙑 📺"
+CREDITS = "\n\n⚡ **Made By [𝐵 𝑙 𝑎 𝑧 𝑒](tg://user?id=8717767927)**"
 
-# ================= Proxy Configuration (Optional) =================
-# Add your proxy if needed. Leave empty to use direct connection
-PROXY_URL = ""  # Example: "http://username:password@proxy:port"
-# Or set via environment variable in Railway
+# Railway Port & Proxy
+PORT = int(os.environ.get("PORT", 8080))
 PROXY_URL = os.environ.get("PROXY_URL", "")
 
-# ================= Stream Headers =================
-BROWSER_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Accept": "*/*",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Accept-Encoding": "gzip, deflate, br",
-    "Connection": "keep-alive",
-    "Cache-Control": "no-cache",
+# ================= Storage (In-Memory Database) =================
+CHANNELS = {}
+MOVIES = {}
+SERIES = {}
+APPROVED_GROUPS = set()
+CURRENT_STREAMS = {}  # Tracks what is currently playing in each chat
+
+QUALITY_PRESETS = {
+    "360p": VideoQuality.SD_360p,
+    "480p": VideoQuality.SD_480p,
+    "720p": VideoQuality.HD_720p,
+    "1080p": VideoQuality.FHD_1080p,
 }
 
-# Dynamically generate headers to match the stream's exact Origin/Subdomain
+# ================= Flask Server =================
+flask_app = Flask(__name__)
+
+@flask_app.route('/')
+def home():
+    return f"📺 {BOT_NAME} System Online"
+
+def run_flask():
+    flask_app.run(host='0.0.0.0', port=PORT, debug=False)
+
+# ================= Initialize Clients =================
+app = Client("tv_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
+user_app = Client("user_session", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_STRING)
+call_py = PyTgCalls(user_app)
+
+# ================= Utilities =================
 def get_amagi_headers(url):
     parsed = urlparse(url)
     base_url = f"{parsed.scheme}://{parsed.netloc}"
@@ -46,407 +66,295 @@ def get_amagi_headers(url):
         "Accept": "*/*",
         "Origin": base_url,
         "Referer": base_url + "/",
-        "Sec-Fetch-Dest": "empty",
-        "Sec-Fetch-Mode": "cors",
-        "Sec-Fetch-Site": "cross-site",
     }
 
-# ================= Flask Server =================
-flask_app = Flask(__name__)
-
-@flask_app.route('/')
-def home():
-    return "📺 Live TV Bot Running"
-
-@flask_app.route('/health')
-def health():
-    return {"status": "ok", "proxy": bool(PROXY_URL)}, 200
-
-def run_flask():
-    flask_app.run(host='0.0.0.0', port=PORT, debug=False)
-
-# ================= Initialize Clients =================
-app = Client("tv_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
-user_app = Client("user_session", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_STRING)
-
-# PyTgCalls with proxy if configured
-if PROXY_URL:
-    call_py = PyTgCalls(user_app)
-    print(f"🔒 Using proxy: {PROXY_URL[:30]}...")
-else:
-    call_py = PyTgCalls(user_app)
-    print("🔓 Direct connection (no proxy)")
-
-CHANNELS = {}
-active_chats = set()
-
-QUALITY_PRESETS = {
-    "360p": VideoQuality.SD_360p,
-    "480p": VideoQuality.SD_480p,
-    "720p": VideoQuality.HD_720p,
-    "1080p": VideoQuality.FHD_1080p,
-    "2k": VideoQuality.QHD_2K,
-    "4k": VideoQuality.UHD_4K,
-}
-
-# ================= Stream Detection =================
-def detect_stream_type(url):
-    """Detect stream type from URL"""
-    url_lower = url.lower()
-    
-    if any(x in url_lower for x in ['amagi', 'amg', 'now3', 'playout']):
-        return "amagi"
-    elif url_lower.endswith('.m3u8'):
-        return "hls"
-    elif url_lower.endswith(('.mp4', '.ts', '.mkv', '.webm')):
-        return "direct_video"
-    elif 'youtube.com' in url_lower or 'youtu.be' in url_lower:
-        return "youtube"
-    elif 'twitch.tv' in url_lower:
-        return "twitch"
-    elif '.m3u' in url_lower:
-        return "hls"
-    else:
-        return "direct"
-
-def get_headers_for_stream(url):
-    """Get appropriate headers based on stream type"""
-    stream_type = detect_stream_type(url)
-    
-    if stream_type == "amagi":
-        return get_amagi_headers(url)
-    else:
-        return BROWSER_HEADERS
-
-# ================= Stream Test =================
-async def test_stream_accessibility(url):
-    """Quick test to check if stream is accessible"""
+async def ensure_assistant_in_chat(chat_id, message):
+    """Automatically adds the Assistant (User Session) to the Group"""
     try:
-        # Try with browser headers
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=BROWSER_HEADERS, timeout=10, allow_redirects=True) as resp:
-                if resp.status in [200, 206, 302, 301]:
-                    return True
-    except:
-        pass
-    
-    try:
-        # Try with Amagi headers
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=get_amagi_headers(url), timeout=10, allow_redirects=True) as resp:
-                if resp.status in [200, 206, 302, 301]:
-                    return True
-    except:
-        pass
-    
-    # Try HEAD request
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.head(url, headers=get_amagi_headers(url), timeout=10, allow_redirects=True) as resp:
-                if resp.status != 404:
-                    return True
-    except:
-        pass
-    
-    return False
+        await user_app.get_chat(chat_id)
+        return True
+    except Exception:
+        try:
+            chat = await app.get_chat(chat_id)
+            link = chat.invite_link
+            if not link:
+                link = await app.export_chat_invite_link(chat_id)
+            await user_app.join_chat(link)
+            await message.reply(f"🤖 **Assistant Successfully Joined the Group!** {CREDITS}")
+            return True
+        except UserAlreadyParticipant:
+            return True
+        except Exception as e:
+            await message.reply(f"⚠️ **Could not add assistant!**\nError: `{e}`\n\nPlease add the assistant manually to play streams.{CREDITS}")
+            return False
+
+def check_approval(func):
+    """Decorator to check if group is approved before streaming"""
+    async def wrapper(client, message):
+        if message.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
+            if message.chat.id not in APPROVED_GROUPS and message.from_user.id != OWNER_ID:
+                return await message.reply(
+                    f"🚫 **ACCESS DENIED**\n\n"
+                    f"❖ This Group (`{message.chat.id}`) is not authorized!\n"
+                    f"❖ Contact the owner to `/approve` this chat.{CREDITS}"
+                )
+        return await func(client, message)
+    return wrapper
 
 # ================= Commands =================
 @app.on_message(filters.command("start"))
 async def start_cmd(client, message):
     await message.reply(
-        "🎬 **Live TV VC Bot**\n\n"
-        "**Commands:**\n"
-        "• `/channels` - Browse channels\n"
-        "• `/livetv <name>` - Play in VC (720p)\n"
-        "• `/hqlivetv <name> <quality>` - Custom quality\n"
-        "• `/teststream <url>` - Test a stream\n"
-        "• `/stopvc` - Stop streaming\n"
-        "• `/ping` - Check bot status\n\n"
-        "🔧 **Note:** Amagi/restricted streams work in VC even if test shows 'not accessible'"
+        f"╭━━━[ **{BOT_NAME}** ]━━━╮\n"
+        f"┃\n"
+        f"┃ ❖ `/channels` - Browse Live TV\n"
+        f"┃ ❖ `/movies` - Browse Movies\n"
+        f"┃ ❖ `/series` - Browse Series\n"
+        f"┃ ❖ `/livetv <name>` - Play Channel\n"
+        f"┃ ❖ `/playmovie <name>` - Play Movie\n"
+        f"┃ ❖ `/playseries <name> - <ep>` - Play Series\n"
+        f"┃ ❖ `/stopvc` - Stop Current Stream\n"
+        f"┃\n"
+        f"╰━━━━━━━━━━━━━━━━━╯{CREDITS}"
     )
 
-@app.on_message(filters.command(["channels", "allchannels"]))
-async def show_channels(client, message):
-    if not CHANNELS:
-        return await message.reply("❌ No channels loaded. Owner needs to add channels!")
-    
-    text = "📺 **Available Channels**\n\n"
-    for idx, name in enumerate(CHANNELS.keys(), 1):
-        if len(text) > 3800:
-            text += f"\n... and {len(CHANNELS) - idx + 1} more!"
-            break
-        text += f"`{idx:02d}.` **{name.title()}**\n"
-    
-    text += f"\n📊 Total: {len(CHANNELS)} channels"
-    
-    if len(text) > 4000:
-        file = BytesIO(text.encode())
-        file.name = "channels.txt"
-        await message.reply_document(file, caption=f"📺 **{len(CHANNELS)} Channels**")
-    else:
-        await message.reply(text)
+# ----------------- ADMIN COMMANDS -----------------
+@app.on_message(filters.command("approve") & filters.user(OWNER_ID))
+async def approve_group(client, message):
+    try:
+        chat_id = int(message.command[1]) if len(message.command) > 1 else message.chat.id
+        APPROVED_GROUPS.add(chat_id)
+        await message.reply(f"✅ **Group `{chat_id}` has been APPROVED.**\nUsers can now stream here.{CREDITS}")
+    except ValueError:
+        await message.reply("❌ Invalid Chat ID")
 
-@app.on_message(filters.command("teststream"))
-async def test_stream(client, message):
-    if len(message.command) < 2:
-        return await message.reply("**Usage:** `/teststream <URL>`")
-    
-    url = message.command[1]
-    msg = await message.reply("🔍 **Testing stream...**")
-    
-    stream_type = detect_stream_type(url)
-    is_accessible = await test_stream_accessibility(url)
-    
-    if is_accessible:
-        await msg.edit_text(
-            f"✅ **Stream Accessible!**\n"
-            f"📡 Type: {stream_type.upper()}\n"
-            f"🔗 `{url[:80]}...`\n\n"
-            f"✅ Will work in VC"
-        )
-    else:
-        await msg.edit_text(
-            f"⚠️ **HTTP Test: Not Accessible**\n\n"
-            f"📡 **Stream Type:** {stream_type.upper()}\n"
-            f"🔗 `{url[:80]}...`\n\n"
-            f"**This is NORMAL for Amagi/restricted streams!**\n\n"
-            f"✅ **FFmpeg can still play it in VC** because:\n"
-            f"• It bypasses browser security (CORS)\n"
-            f"• Uses direct HTTP connection\n"
-            f"• Sends proper referer headers\n\n"
-            f"💡 Add it anyway and try `/livetv`"
-        )
+@app.on_message(filters.command("unapprove") & filters.user(OWNER_ID))
+async def unapprove_group(client, message):
+    try:
+        chat_id = int(message.command[1]) if len(message.command) > 1 else message.chat.id
+        if chat_id in APPROVED_GROUPS:
+            APPROVED_GROUPS.remove(chat_id)
+        await message.reply(f"🚫 **Group `{chat_id}` UNAPPROVED.**{CREDITS}")
+    except ValueError:
+        pass
 
-@app.on_message(filters.command("livetv"))
-async def play_live_tv(client, message):
-    chat_id = message.chat.id
-    
-    if len(message.command) < 2:
-        return await message.reply("**Usage:** `/livetv <Channel Name>`")
-    
-    channel_name = " ".join(message.command[1:]).strip().lower()
-    
-    if channel_name not in CHANNELS:
-        return await message.reply("❌ Channel not found! Use `/channels`")
-    
-    await play_stream(chat_id, channel_name, "720p", message)
-
-@app.on_message(filters.command("hqlivetv"))
-async def play_hq_tv(client, message):
-    chat_id = message.chat.id
-    
-    if len(message.command) < 2:
-        return await message.reply(
-            "**Usage:** `/hqlivetv <Channel Name> <Quality>`\n\n"
-            "**Qualities:** `360p` `480p` `720p` `1080p` `2k` `4k`\n"
-            "**Example:** `/hqlivetv Sony Kal 1080p`"
-        )
-    
-    parts = message.command[1:]
-    if parts[-1].lower() in QUALITY_PRESETS:
-        quality = parts[-1].lower()
-        channel_name = " ".join(parts[:-1]).strip().lower()
-    else:
-        quality = "720p"
-        channel_name = " ".join(parts).strip().lower()
-    
-    if channel_name not in CHANNELS:
-        return await message.reply("❌ Channel not found!")
-    
-    await play_stream(chat_id, channel_name, quality, message)
-
-async def play_stream(chat_id, channel_name, quality, message):
-    stream_url = CHANNELS[channel_name]
-    stream_type = detect_stream_type(stream_url)
-    quality_label = quality.upper().replace("P", "p")
-    
-    msg = await message.reply(
-        f"🎬 **Starting Stream...**\n"
-        f"📺 {channel_name.title()}\n"
-        f"📊 {quality_label}\n"
-        f"🔧 Type: {stream_type.upper()}\n"
-        f"⏳ Please wait 5-10 seconds..."
+@app.on_message(filters.command("botinfo") & filters.user(OWNER_ID))
+async def bot_info(client, message):
+    text = (
+        f"╭━━━[ **🖥️ SYSTEM INFO** ]━━━╮\n"
+        f"┃\n"
+        f"┃ 📡 **Active Streams:** {len(CURRENT_STREAMS)}\n"
+        f"┃ 📺 **Channels Added:** {len(CHANNELS)}\n"
+        f"┃ 🎬 **Movies Added:** {len(MOVIES)}\n"
+        f"┃ 🍿 **Series Added:** {len(SERIES)}\n"
+        f"┃ 🛡️ **Approved Groups:** {len(APPROVED_GROUPS)}\n"
     )
+    for grp in APPROVED_GROUPS:
+        text += f"┃ ├ `{grp}`\n"
+    text += f"┃\n╰━━━━━━━━━━━━━━━━━╯{CREDITS}"
+    await message.reply(text)
+
+@app.on_message(filters.command("broadcast") & filters.user(OWNER_ID))
+async def broadcast(client, message):
+    if len(message.command) < 2:
+        return await message.reply("⚠️ Usage: `/broadcast <message>`")
+    
+    msg_text = message.text.split(None, 1)[1]
+    success, failed = 0, 0
+    
+    m = await message.reply("🚀 **Broadcasting message...**")
+    for chat_id in APPROVED_GROUPS:
+        try:
+            await app.send_message(chat_id, f"🔔 **Broadcast Alert**\n\n{msg_text}{CREDITS}")
+            success += 1
+        except:
+            failed += 1
+            
+    await m.edit_text(f"✅ **Broadcast Complete!**\n\n📨 Sent: {success}\n❌ Failed: {failed}{CREDITS}")
+
+# ----------------- ADD MEDIA COMMANDS (OWNER) -----------------
+@app.on_message(filters.command("addmovie") & filters.user(OWNER_ID))
+async def add_movie(client, message):
+    try:
+        args = message.text.split(None, 1)[1].split("|")
+        name, url = args[0].strip().lower(), args[1].strip()
+        MOVIES[name] = url
+        await message.reply(f"✅ **Movie Added:** {name.title()}{CREDITS}")
+    except:
+        await message.reply("⚠️ Format: `/addmovie SpiderMan | https://url.mp4`")
+
+@app.on_message(filters.command("addseries") & filters.user(OWNER_ID))
+async def add_series(client, message):
+    try:
+        args = message.text.split(None, 1)[1].split("|")
+        name, ep, url = args[0].strip().lower(), args[1].strip().lower(), args[2].strip()
+        if name not in SERIES:
+            SERIES[name] = {}
+        SERIES[name][ep] = url
+        await message.reply(f"✅ **Series Added:** {name.title()} ({ep.upper()}){CREDITS}")
+    except:
+        await message.reply("⚠️ Format: `/addseries Loki | S01E01 | https://url.mp4`")
+
+# ----------------- STREAM COMMANDS -----------------
+@app.on_message(filters.command(["livetv", "playmovie", "playseries"]) & filters.group)
+@check_approval
+async def stream_media(client, message):
+    chat_id = message.chat.id
+    cmd = message.command[0]
+    
+    if not await ensure_assistant_in_chat(chat_id, message):
+        return
+
+    if len(message.command) < 2:
+        return await message.reply(f"⚠️ Usage: `/{cmd} <Name>`")
+
+    query = " ".join(message.command[1:]).strip().lower()
+    
+    url = ""
+    media_type = ""
+    display_name = ""
+
+    if cmd == "livetv":
+        if query not in CHANNELS:
+            return await message.reply("❌ Channel not found!")
+        url = CHANNELS[query]
+        media_type = "📺 Live TV"
+        display_name = query.title()
+        
+    elif cmd == "playmovie":
+        if query not in MOVIES:
+            return await message.reply("❌ Movie not found!")
+        url = MOVIES[query]
+        media_type = "🎬 Movie"
+        display_name = query.title()
+        
+    elif cmd == "playseries":
+        try:
+            show, ep = [x.strip() for x in query.split("-")]
+            if show not in SERIES or ep not in SERIES[show]:
+                return await message.reply("❌ Series or Episode not found!")
+            url = SERIES[show][ep]
+            media_type = "🍿 Series"
+            display_name = f"{show.title()} [{ep.upper()}]"
+        except:
+            return await message.reply("⚠️ Format: `/playseries Show Name - S01E01`")
+
+    # Start Streaming
+    msg = await message.reply(f"⚡ **Initializing {media_type}...**\n⏳ Please wait...")
     
     try:
-        # Get PyTgCalls Video Quality Object
-        video_quality = QUALITY_PRESETS.get(quality, VideoQuality.HD_720p)
+        headers = get_amagi_headers(url) if "amagi" in url.lower() else {}
         
-        # Get Headers (Crucial for Amagi Streams)
-        headers = get_headers_for_stream(stream_url)
-        
-        # Start pure stream without custom FFmpeg parameters
         await call_py.play(
             chat_id,
             MediaStream(
-                media_path=stream_url,
-                video_parameters=video_quality,
+                media_path=url,
+                video_parameters=VideoQuality.HD_720p,
                 headers=headers
             )
         )
         
-        active_chats.add(chat_id)
+        # Track active stream
+        CURRENT_STREAMS[chat_id] = {"url": url, "name": display_name, "type": media_type}
+
+        # Quality Control Buttons
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("360p", callback_data="q_360p"),
+             InlineKeyboardButton("480p", callback_data="q_480p")],
+            [InlineKeyboardButton("720p (HD)", callback_data="q_720p"),
+             InlineKeyboardButton("1080p (FHD)", callback_data="q_1080p")]
+        ])
+
         await msg.edit_text(
-            f"▶️ **Now Streaming!**\n\n"
-            f"📺 **{channel_name.title()}**\n"
-            f"📊 **{quality_label}**\n"
-            f"🔧 **Type:** {stream_type.upper()}\n"
-            f"📡 **Status:** Live\n\n"
-            f"💡 `/stopvc` to stop"
+            f"╭━━━[ **{BOT_NAME}** ]━━━╮\n"
+            f"┃\n"
+            f"┃ ❖ **Status:** 🟢 Live Now\n"
+            f"┃ ❖ **Type:** {media_type}\n"
+            f"┃ ❖ **Title:** {display_name}\n"
+            f"┃ ❖ **Quality:** 720p (HD)\n"
+            f"┃\n"
+            f"╰━━━━━━━━━━━━━━━━━╯{CREDITS}",
+            reply_markup=keyboard
+        )
+
+    except Exception as e:
+        await msg.edit_text(f"❌ **Stream Failed!**\nError: `{str(e)[:100]}`{CREDITS}")
+
+# ----------------- QUALITY SWITCH CALLBACK -----------------
+@app.on_callback_query(filters.regex(r"^q_"))
+async def switch_quality(client, callback_query):
+    chat_id = callback_query.message.chat.id
+    quality_req = callback_query.data.split("_")[1]
+    
+    if chat_id not in CURRENT_STREAMS:
+        return await callback_query.answer("⚠️ No active stream found here!", show_alert=True)
+        
+    stream_info = CURRENT_STREAMS[chat_id]
+    vq = QUALITY_PRESETS.get(quality_req, VideoQuality.HD_720p)
+    
+    try:
+        headers = get_amagi_headers(stream_info["url"]) if "amagi" in stream_info["url"].lower() else {}
+        
+        # Replace current stream with new quality parameters
+        await call_py.play(
+            chat_id,
+            MediaStream(
+                media_path=stream_info["url"],
+                video_parameters=vq,
+                headers=headers
+            )
         )
         
-        # Notify owner
-        try:
-            await app.send_message(
-                OWNER_ID,
-                f"🟢 Stream ON: {channel_name.title()} ({quality_label})\nChat: {chat_id}"
-            )
-        except:
-            pass
-            
-    except Exception as e:
-        error_text = str(e)[:200]
-        print(f"Stream Error: {error_text}")
-        await msg.edit_text(
-            f"❌ **Failed to Play Stream**\n\n"
-            f"📺 **Channel:** {channel_name.title()}\n"
-            f"⚠️ **Error:** `{error_text}`\n\n"
-            f"**Try:**\n"
-            f"• Lower quality: `/hqlivetv {channel_name.title()} 360p`\n"
-            f"• Wait a few seconds and try again\n"
-            f"• Contact owner for proxy setup (If Geo-blocked)"
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("360p", callback_data="q_360p"),
+             InlineKeyboardButton("480p", callback_data="q_480p")],
+            [InlineKeyboardButton("720p (HD)", callback_data="q_720p"),
+             InlineKeyboardButton("1080p (FHD)", callback_data="q_1080p")]
+        ])
+
+        await callback_query.message.edit_text(
+            f"╭━━━[ **{BOT_NAME}** ]━━━╮\n"
+            f"┃\n"
+            f"┃ ❖ **Status:** 🟢 Live Now\n"
+            f"┃ ❖ **Type:** {stream_info['type']}\n"
+            f"┃ ❖ **Title:** {stream_info['name']}\n"
+            f"┃ ❖ **Quality:** {quality_req.upper()} ✅\n"
+            f"┃\n"
+            f"╰━━━━━━━━━━━━━━━━━╯{CREDITS}",
+            reply_markup=keyboard
         )
+        await callback_query.answer(f"✅ Quality switched to {quality_req}!")
+        
+    except Exception as e:
+        await callback_query.answer(f"❌ Failed to change quality!", show_alert=True)
 
 @app.on_message(filters.command("stopvc") & filters.group)
 async def stop_vc(client, message):
     try:
         await call_py.leave_call(message.chat.id)
-        active_chats.discard(message.chat.id)
-        await message.reply("⏹ **Stream Stopped**")
+        CURRENT_STREAMS.pop(message.chat.id, None)
+        await message.reply(f"⏹ **Stream Stopped Successfully.**{CREDITS}")
     except Exception as e:
         await message.reply(f"❌ `{str(e)[:100]}`")
 
-@app.on_message(filters.command("ping"))
-async def ping_cmd(client, message):
-    proxy_status = "🔒 Enabled" if PROXY_URL else "🔓 Direct"
-    await message.reply(f"🏓 **Pong!**\n📡 Connection: {proxy_status}\n✅ Bot is running!")
-
-@app.on_message(filters.command("proxyinfo") & filters.user(OWNER_ID))
-async def proxy_info(client, message):
-    if PROXY_URL:
-        masked = PROXY_URL[:20] + "..." if len(PROXY_URL) > 20 else PROXY_URL
-        await message.reply(f"🔒 **Proxy Active:** `{masked}`")
-    else:
-        await message.reply("🔓 **No proxy configured**\n\nTo add proxy, set PROXY_URL in Railway environment variables:\n`PROXY_URL=http://user:pass@proxy:port`")
-
-# ================= Owner Commands =================
-@app.on_message(filters.command("addxtream") & filters.user(OWNER_ID))
-async def add_xtream(client, message):
-    args = message.text.split()
-    if len(args) != 4:
-        return await message.reply("**Usage:** `/addxtream <URL> <Username> <Password>`")
-    
-    url, user, passwd = args[1].rstrip("/"), args[2], args[3]
-    api_url = f"{url}/player_api.php?username={user}&password={passwd}&action=get_live_streams"
-    msg = await message.reply("🔄 Fetching channels...")
-    
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(api_url, timeout=30) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    count = 0
-                    for stream in data:
-                        name = stream.get("name", "").strip().lower()
-                        if name:
-                            stream_url = f"{url}/live/{user}/{passwd}/{stream.get('stream_id')}.m3u8"
-                            CHANNELS[name] = stream_url
-                            count += 1
-                    await msg.edit_text(f"✅ Loaded {count} channels!")
-                else:
-                    await msg.edit_text(f"❌ Status {resp.status}")
-    except Exception as e:
-        await msg.edit_text(f"❌ `{str(e)[:200]}`")
-
-@app.on_message(filters.command("addchannel") & filters.user(OWNER_ID))
-async def add_manual_channel(client, message):
-    args = message.text.split(None, 2)
-    if len(args) < 3:
-        return await message.reply("**Usage:** `/addchannel <URL> <Channel Name>`\n\nExample: `/addchannel https://...m3u8 Sony Kal`")
-    
-    url, name = args[1], args[2].strip().lower()
-    CHANNELS[name] = url
-    
-    stream_type = detect_stream_type(url)
-    await message.reply(
-        f"✅ **Added:** {name.title()}\n"
-        f"📡 Type: {stream_type.upper()}\n"
-        f"🔗 `{url[:80]}...`\n\n"
-        f"💡 Use `/livetv {name.title()}` to play"
-    )
-
-@app.on_message(filters.command("editchannel") & filters.user(OWNER_ID))
-async def edit_channel(client, message):
-    try:
-        parts = [p.strip() for p in message.text.split(None, 1)[1].split('|')]
-        if len(parts) != 3:
-            return await message.reply("**Usage:** `/editchannel Old Name | New Name | New URL`")
-        
-        old, new, url = parts[0].lower(), parts[1].lower(), parts[2]
-        if old not in CHANNELS:
-            return await message.reply("❌ Not found!")
-        
-        if old != new:
-            del CHANNELS[old]
-        CHANNELS[new] = url
-        await message.reply(f"✅ Updated: {new.title()}")
-    except:
-        await message.reply("❌ Format: `/editchannel Old | New | URL`")
-
-@app.on_message(filters.command("delchannel") & filters.user(OWNER_ID))
-async def delete_channel(client, message):
-    try:
-        name = message.text.split(None, 1)[1].strip().lower()
-        if name in CHANNELS:
-            del CHANNELS[name]
-            await message.reply(f"🗑️ Deleted: {name.title()}")
-        else:
-            await message.reply("❌ Not found!")
-    except:
-        await message.reply("**Usage:** `/delchannel <Name>`")
-
-@app.on_message(filters.command(["stats", "channelcount"]) & filters.user(OWNER_ID))
-async def stats(client, message):
-    await message.reply(
-        f"📊 **Bot Stats**\n\n"
-        f"📺 Channels: {len(CHANNELS)}\n"
-        f"🎬 Active Streams: {len(active_chats)}\n"
-        f"🔒 Proxy: {'Yes' if PROXY_URL else 'No'}"
-    )
-
-# ================= Boot =================
+# ================= Boot Sequence =================
 async def main():
     flask_thread = Thread(target=run_flask, daemon=True)
     flask_thread.start()
-    print(f"🌐 Server on port {PORT}")
     
     await app.start()
     await user_app.start()
     await call_py.start()
     
-    print("✅ Bot Ready!")
-    print(f"🔒 Proxy: {'Enabled' if PROXY_URL else 'Disabled'}")
-    print("📡 Supports: Amagi, HLS, M3U8, direct streams")
-    print("💡 Tip: Amagi streams work in VC even if HTTP test fails!")
-    
+    print(f"✅ {BOT_NAME} System Online!")
     try:
-        await app.send_message(OWNER_ID, "🟢 Bot online!\n🔧 Amagi + restricted stream support active")
+        await app.send_message(OWNER_ID, f"🟢 **{BOT_NAME} Online!**\nSystem initialized perfectly.{CREDITS}")
     except:
         pass
     
     await idle()
     
-    for chat_id in active_chats.copy():
+    for chat_id in list(CURRENT_STREAMS.keys()):
         try:
             await call_py.leave_call(chat_id)
         except:
@@ -457,4 +365,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.get_event_loop().run_until_complete(main())
-    
