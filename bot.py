@@ -105,7 +105,7 @@ def check_approval(func):
         return await func(client, message)
     return wrapper
 
-# ================= Commands =================
+# ================= Start Command =================
 @app.on_message(filters.command("start"))
 async def start_cmd(client, message):
     await message.reply(
@@ -119,16 +119,133 @@ async def start_cmd(client, message):
         f"┃ ❖ `/playseries <name> - <ep>` - Play Series\n"
         f"┃ ❖ `/stopvc` - Stop Current Stream\n"
         f"┃\n"
-        f"╰━━━━━━━━━━━━━━━━━╯{CREDITS}"
+        f"╰━━━━━━━━━━━━━━━━━╯{CREDITS}",
+        disable_web_page_preview=True
     )
 
-# ----------------- ADMIN COMMANDS -----------------
+# ================= Database Browsing (Channels/Movies/Series) =================
+@app.on_message(filters.command(["channels", "allchannels"]))
+async def show_channels(client, message):
+    if not CHANNELS:
+        return await message.reply(f"❌ **No Channels Found.**\nAsk the owner to add some!{CREDITS}", disable_web_page_preview=True)
+    
+    text = f"╭━━━[ **📺 LIVE CHANNELS** ]━━━╮\n┃\n"
+    for idx, name in enumerate(CHANNELS.keys(), 1):
+        if len(text) > 3800:
+            text += f"┃ ❖ ... and {len(CHANNELS) - idx + 1} more!\n"
+            break
+        text += f"┃ ❖ `{idx:02d}.` **{name.title()}**\n"
+    text += f"┃\n╰━━━━━━━━━━━━━━━━━╯{CREDITS}"
+    
+    if len(text) > 4000:
+        file = BytesIO(text.encode())
+        file.name = "channels.txt"
+        await message.reply_document(file, caption=f"📺 **{len(CHANNELS)} Channels Available**{CREDITS}")
+    else:
+        await message.reply(text, disable_web_page_preview=True)
+
+@app.on_message(filters.command("movies"))
+async def show_movies(client, message):
+    if not MOVIES:
+        return await message.reply(f"❌ **No Movies Found.**{CREDITS}", disable_web_page_preview=True)
+    
+    text = f"╭━━━[ **🎬 MOVIES LIST** ]━━━╮\n┃\n"
+    for idx, name in enumerate(MOVIES.keys(), 1):
+        text += f"┃ ❖ `{idx:02d}.` **{name.title()}**\n"
+    text += f"┃\n╰━━━━━━━━━━━━━━━━━╯{CREDITS}"
+    await message.reply(text, disable_web_page_preview=True)
+
+@app.on_message(filters.command("series"))
+async def show_series(client, message):
+    if not SERIES:
+        return await message.reply(f"❌ **No Series Found.**{CREDITS}", disable_web_page_preview=True)
+    
+    text = f"╭━━━[ **🍿 SERIES LIST** ]━━━╮\n┃\n"
+    for show, eps in SERIES.items():
+        text += f"┃ ❖ **{show.title()}** (Episodes: {', '.join(eps.keys()).upper()})\n"
+    text += f"┃\n╰━━━━━━━━━━━━━━━━━╯{CREDITS}"
+    await message.reply(text, disable_web_page_preview=True)
+
+# ================= OWNER COMMANDS =================
+@app.on_message(filters.command("addchannel") & filters.user(OWNER_ID))
+async def add_manual_channel(client, message):
+    args = message.text.split(None, 2)
+    if len(args) < 3:
+        return await message.reply(f"⚠️ **Usage:** `/addchannel <URL> <Channel Name>`\nExample: `/addchannel http://...ts Hungama`{CREDITS}", disable_web_page_preview=True)
+    
+    url, name = args[1], args[2].strip().lower()
+    CHANNELS[name] = url
+    await message.reply(f"✅ **Channel Added Successfully!**\n📺 Name: `{name.title()}`{CREDITS}", disable_web_page_preview=True)
+
+@app.on_message(filters.command("addxtream") & filters.user(OWNER_ID))
+async def add_xtream(client, message):
+    args = message.text.split()
+    if len(args) != 4:
+        return await message.reply(f"⚠️ **Usage:** `/addxtream <URL> <Username> <Password>`{CREDITS}", disable_web_page_preview=True)
+    
+    url, user, passwd = args[1].rstrip("/"), args[2], args[3]
+    api_url = f"{url}/player_api.php?username={user}&password={passwd}&action=get_live_streams"
+    msg = await message.reply("🚀 **Fetching Xtream channels...**")
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(api_url, timeout=30) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    count = 0
+                    for stream in data:
+                        name = stream.get("name", "").strip().lower()
+                        if name:
+                            stream_url = f"{url}/live/{user}/{passwd}/{stream.get('stream_id')}.m3u8"
+                            CHANNELS[name] = stream_url
+                            count += 1
+                    await msg.edit_text(f"✅ **Loaded {count} Channels from Xtream API!**{CREDITS}", disable_web_page_preview=True)
+                else:
+                    await msg.edit_text(f"❌ Error Status: {resp.status}")
+    except Exception as e:
+        await msg.edit_text(f"❌ Failed: `{str(e)[:100]}`")
+
+@app.on_message(filters.command("addmovie") & filters.user(OWNER_ID))
+async def add_movie(client, message):
+    try:
+        args = message.text.split(None, 1)[1].split("|")
+        name, url = args[0].strip().lower(), args[1].strip()
+        MOVIES[name] = url
+        await message.reply(f"✅ **Movie Added:** {name.title()}{CREDITS}", disable_web_page_preview=True)
+    except:
+        await message.reply(f"⚠️ **Format:** `/addmovie Movie Name | https://url.mp4`{CREDITS}", disable_web_page_preview=True)
+
+@app.on_message(filters.command("addseries") & filters.user(OWNER_ID))
+async def add_series(client, message):
+    try:
+        args = message.text.split(None, 1)[1].split("|")
+        name, ep, url = args[0].strip().lower(), args[1].strip().lower(), args[2].strip()
+        if name not in SERIES:
+            SERIES[name] = {}
+        SERIES[name][ep] = url
+        await message.reply(f"✅ **Series Added:** {name.title()} ({ep.upper()}){CREDITS}", disable_web_page_preview=True)
+    except:
+        await message.reply(f"⚠️ **Format:** `/addseries Loki | S01E01 | https://url.mp4`{CREDITS}", disable_web_page_preview=True)
+
+@app.on_message(filters.command("delchannel") & filters.user(OWNER_ID))
+async def delete_channel(client, message):
+    try:
+        name = message.text.split(None, 1)[1].strip().lower()
+        if name in CHANNELS:
+            del CHANNELS[name]
+            await message.reply(f"🗑️ **Deleted:** {name.title()}{CREDITS}", disable_web_page_preview=True)
+        else:
+            await message.reply("❌ Not found!")
+    except:
+        await message.reply("⚠️ **Usage:** `/delchannel <Name>`")
+
+# ================= ADMIN/GROUP SYSTEM =================
 @app.on_message(filters.command("approve") & filters.user(OWNER_ID))
 async def approve_group(client, message):
     try:
         chat_id = int(message.command[1]) if len(message.command) > 1 else message.chat.id
         APPROVED_GROUPS.add(chat_id)
-        await message.reply(f"✅ **Group `{chat_id}` has been APPROVED.**\nUsers can now stream here.{CREDITS}")
+        await message.reply(f"✅ **Group `{chat_id}` has been APPROVED.**\nUsers can now stream here.{CREDITS}", disable_web_page_preview=True)
     except ValueError:
         await message.reply("❌ Invalid Chat ID")
 
@@ -138,7 +255,7 @@ async def unapprove_group(client, message):
         chat_id = int(message.command[1]) if len(message.command) > 1 else message.chat.id
         if chat_id in APPROVED_GROUPS:
             APPROVED_GROUPS.remove(chat_id)
-        await message.reply(f"🚫 **Group `{chat_id}` UNAPPROVED.**{CREDITS}")
+        await message.reply(f"🚫 **Group `{chat_id}` UNAPPROVED.**{CREDITS}", disable_web_page_preview=True)
     except ValueError:
         pass
 
@@ -156,7 +273,7 @@ async def bot_info(client, message):
     for grp in APPROVED_GROUPS:
         text += f"┃ ├ `{grp}`\n"
     text += f"┃\n╰━━━━━━━━━━━━━━━━━╯{CREDITS}"
-    await message.reply(text)
+    await message.reply(text, disable_web_page_preview=True)
 
 @app.on_message(filters.command("broadcast") & filters.user(OWNER_ID))
 async def broadcast(client, message):
@@ -169,37 +286,14 @@ async def broadcast(client, message):
     m = await message.reply("🚀 **Broadcasting message...**")
     for chat_id in APPROVED_GROUPS:
         try:
-            await app.send_message(chat_id, f"🔔 **Broadcast Alert**\n\n{msg_text}{CREDITS}")
+            await app.send_message(chat_id, f"🔔 **Broadcast Alert**\n\n{msg_text}{CREDITS}", disable_web_page_preview=True)
             success += 1
         except:
             failed += 1
             
-    await m.edit_text(f"✅ **Broadcast Complete!**\n\n📨 Sent: {success}\n❌ Failed: {failed}{CREDITS}")
+    await m.edit_text(f"✅ **Broadcast Complete!**\n\n📨 Sent: {success}\n❌ Failed: {failed}{CREDITS}", disable_web_page_preview=True)
 
-# ----------------- ADD MEDIA COMMANDS (OWNER) -----------------
-@app.on_message(filters.command("addmovie") & filters.user(OWNER_ID))
-async def add_movie(client, message):
-    try:
-        args = message.text.split(None, 1)[1].split("|")
-        name, url = args[0].strip().lower(), args[1].strip()
-        MOVIES[name] = url
-        await message.reply(f"✅ **Movie Added:** {name.title()}{CREDITS}")
-    except:
-        await message.reply("⚠️ Format: `/addmovie SpiderMan | https://url.mp4`")
-
-@app.on_message(filters.command("addseries") & filters.user(OWNER_ID))
-async def add_series(client, message):
-    try:
-        args = message.text.split(None, 1)[1].split("|")
-        name, ep, url = args[0].strip().lower(), args[1].strip().lower(), args[2].strip()
-        if name not in SERIES:
-            SERIES[name] = {}
-        SERIES[name][ep] = url
-        await message.reply(f"✅ **Series Added:** {name.title()} ({ep.upper()}){CREDITS}")
-    except:
-        await message.reply("⚠️ Format: `/addseries Loki | S01E01 | https://url.mp4`")
-
-# ----------------- STREAM COMMANDS -----------------
+# ================= STREAMING COMMANDS =================
 @app.on_message(filters.command(["livetv", "playmovie", "playseries"]) & filters.group)
 @check_approval
 async def stream_media(client, message):
@@ -220,14 +314,14 @@ async def stream_media(client, message):
 
     if cmd == "livetv":
         if query not in CHANNELS:
-            return await message.reply("❌ Channel not found!")
+            return await message.reply("❌ Channel not found! Use `/channels` to see the list.")
         url = CHANNELS[query]
         media_type = "📺 Live TV"
         display_name = query.title()
         
     elif cmd == "playmovie":
         if query not in MOVIES:
-            return await message.reply("❌ Movie not found!")
+            return await message.reply("❌ Movie not found! Use `/movies` to see the list.")
         url = MOVIES[query]
         media_type = "🎬 Movie"
         display_name = query.title()
@@ -236,14 +330,13 @@ async def stream_media(client, message):
         try:
             show, ep = [x.strip() for x in query.split("-")]
             if show not in SERIES or ep not in SERIES[show]:
-                return await message.reply("❌ Series or Episode not found!")
+                return await message.reply("❌ Series or Episode not found! Use `/series`.")
             url = SERIES[show][ep]
             media_type = "🍿 Series"
             display_name = f"{show.title()} [{ep.upper()}]"
         except:
             return await message.reply("⚠️ Format: `/playseries Show Name - S01E01`")
 
-    # Start Streaming
     msg = await message.reply(f"⚡ **Initializing {media_type}...**\n⏳ Please wait...")
     
     try:
@@ -258,10 +351,8 @@ async def stream_media(client, message):
             )
         )
         
-        # Track active stream
         CURRENT_STREAMS[chat_id] = {"url": url, "name": display_name, "type": media_type}
 
-        # Quality Control Buttons
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("360p", callback_data="q_360p"),
              InlineKeyboardButton("480p", callback_data="q_480p")],
@@ -278,13 +369,14 @@ async def stream_media(client, message):
             f"┃ ❖ **Quality:** 720p (HD)\n"
             f"┃\n"
             f"╰━━━━━━━━━━━━━━━━━╯{CREDITS}",
-            reply_markup=keyboard
+            reply_markup=keyboard,
+            disable_web_page_preview=True
         )
 
     except Exception as e:
-        await msg.edit_text(f"❌ **Stream Failed!**\nError: `{str(e)[:100]}`{CREDITS}")
+        await msg.edit_text(f"❌ **Stream Failed!**\nError: `{str(e)[:100]}`{CREDITS}", disable_web_page_preview=True)
 
-# ----------------- QUALITY SWITCH CALLBACK -----------------
+# ================= QUALITY SWITCH CALLBACK =================
 @app.on_callback_query(filters.regex(r"^q_"))
 async def switch_quality(client, callback_query):
     chat_id = callback_query.message.chat.id
@@ -299,7 +391,6 @@ async def switch_quality(client, callback_query):
     try:
         headers = get_amagi_headers(stream_info["url"]) if "amagi" in stream_info["url"].lower() else {}
         
-        # Replace current stream with new quality parameters
         await call_py.play(
             chat_id,
             MediaStream(
@@ -325,7 +416,8 @@ async def switch_quality(client, callback_query):
             f"┃ ❖ **Quality:** {quality_req.upper()} ✅\n"
             f"┃\n"
             f"╰━━━━━━━━━━━━━━━━━╯{CREDITS}",
-            reply_markup=keyboard
+            reply_markup=keyboard,
+            disable_web_page_preview=True
         )
         await callback_query.answer(f"✅ Quality switched to {quality_req}!")
         
@@ -337,7 +429,7 @@ async def stop_vc(client, message):
     try:
         await call_py.leave_call(message.chat.id)
         CURRENT_STREAMS.pop(message.chat.id, None)
-        await message.reply(f"⏹ **Stream Stopped Successfully.**{CREDITS}")
+        await message.reply(f"⏹ **Stream Stopped Successfully.**{CREDITS}", disable_web_page_preview=True)
     except Exception as e:
         await message.reply(f"❌ `{str(e)[:100]}`")
 
@@ -352,7 +444,7 @@ async def main():
     
     print(f"✅ {BOT_NAME} System Online!")
     try:
-        await app.send_message(OWNER_ID, f"🟢 **{BOT_NAME} Online!**\nSystem initialized perfectly.{CREDITS}")
+        await app.send_message(OWNER_ID, f"🟢 **{BOT_NAME} Online!**\nSystem initialized perfectly.{CREDITS}", disable_web_page_preview=True)
     except:
         pass
     
