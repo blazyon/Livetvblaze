@@ -1,0 +1,423 @@
+import asyncio
+import aiohttp
+import json
+import os
+import sys
+from io import BytesIO
+from urllib.parse import urlparse
+from threading import Thread
+
+from pyrogram import Client, filters, idle
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from pytgcalls import PyTgCalls
+from pytgcalls.types import MediaStream, VideoQuality
+from flask import Flask
+
+# ================= ⚙️ CONFIGURATION ⚙️ =================
+API_ID = 35562064
+API_HASH = "fc5a4484d4abe8a2118284147b1092f6"
+BOT_TOKEN = "8544679303:AAFW5OwWCbQ969yjP2lgaHReWv4Bg6Iqdas"
+SESSION_STRING = "BQIeolAAOF4_3_Lk6LTKQi1T6JQz0OOWb4JWnEMFAptaWrb_9180UGqK1jT-SdAjp8YFXuUkckgHK8YwPlaPKtVHI26FK05P7aNOuXxwuJdGI9eA_focu9xybZ3c16RpsEHlIzwE-cjXAopvuCv2pPBjCj-vLaj_IIQFXFwXpU1H8AORs3ix1Hgrwe8babSOR-V7yAkhCcVug_h2aTZErdUDN61IaedRcwASjbUi9q3qH9U7Jhdnj4zojP68nfLLMNTkOkfFOZbtgdOjoEvhnhjQ2SzhP6her2W-L9QfnOz__Sb6HuNHwZxx7l-PCmQCtHBN12HD1MEnjyz01P-oIcqCK9FHowAAAAH_qqMkAA"
+
+OWNER_ID = 8717767927
+OWNER_NAME = "𝐵 𝑙 𝑎 𝑧 𝑒"  # Change this to your preferred display name
+PORT = int(os.environ.get("PORT", 8080))
+PROXY_URL = os.environ.get("PROXY_URL", "")
+
+# ================= 💾 DATABASE SYSTEM 💾 =================
+DATA_FILE = "bot_data.json"
+
+default_data = {
+    "approved_groups": [],
+    "served_chats": [],
+    "channels": {},
+    "movies": {},
+    "series": {}
+}
+
+def load_data():
+    if os.path.exists(DATA_FILE):
+        with open(DATA_FILE, "r") as f:
+            return json.load(f)
+    return default_data
+
+def save_data():
+    with open(DATA_FILE, "w") as f:
+        json.dump(DB, f, indent=4)
+
+DB = load_data()
+active_streams = {}  # Tracks what is playing in which chat
+USER_ID = None       # Assistant ID (Fetched at startup)
+
+# ================= 🌐 STREAM HEADERS 🌐 =================
+BROWSER_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "*/*",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Connection": "keep-alive",
+}
+
+def get_amagi_headers(url):
+    parsed = urlparse(url)
+    base_url = f"{parsed.scheme}://{parsed.netloc}"
+    return {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept": "*/*",
+        "Origin": base_url,
+        "Referer": base_url + "/",
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "cross-site",
+    }
+
+# ================= 🖥 FLASK SERVER 🖥 =================
+flask_app = Flask(__name__)
+
+@flask_app.route('/')
+def home():
+    return "💠 HIGH-TECH LIVE TV BOT ONLINE 💠"
+
+def run_flask():
+    flask_app.run(host='0.0.0.0', port=PORT, debug=False)
+
+# ================= 🤖 INITIALIZE CLIENTS 🤖 =================
+app = Client("tv_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
+user_app = Client("user_session", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_STRING)
+call_py = PyTgCalls(user_app)
+
+QUALITY_PRESETS = {
+    "360p": VideoQuality.SD_360p,
+    "480p": VideoQuality.SD_480p,
+    "720p": VideoQuality.HD_720p,
+    "1080p": VideoQuality.FHD_1080p,
+}
+
+# ================= 🛠 HELPER FUNCTIONS 🛠 =================
+def detect_stream_type(url):
+    url_lower = url.lower()
+    if any(x in url_lower for x in ['amagi', 'amg', 'now3', 'playout']):
+        return "amagi"
+    elif url_lower.endswith('.m3u8') or '.m3u' in url_lower:
+        return "hls"
+    elif url_lower.endswith(('.mp4', '.ts', '.mkv', '.webm')):
+        return "direct_video"
+    else:
+        return "direct"
+
+def get_headers_for_stream(url):
+    if detect_stream_type(url) == "amagi":
+        return get_amagi_headers(url)
+    return BROWSER_HEADERS
+
+async def ensure_assistant(chat_id, message):
+    """Automatically adds the assistant to the group if missing"""
+    try:
+        await user_app.get_chat(chat_id)
+        return True
+    except:
+        msg = await message.reply("🔄 **[𝗦𝗬𝗦𝗧𝗘𝗠]** `Assistant missing. Initiating Auto-Join protocol...`")
+        try:
+            invite_link = await app.export_chat_invite_link(chat_id)
+            await user_app.join_chat(invite_link)
+            await msg.edit_text("✅ **[𝗦𝗬𝗦𝗧𝗘𝗠]** `Assistant successfully injected into chat.`")
+            return True
+        except:
+            try:
+                await app.add_chat_members(chat_id, USER_ID)
+                await msg.edit_text("✅ **[𝗦𝗬𝗦𝗧𝗘𝗠]** `Assistant added manually.`")
+                return True
+            except Exception as e:
+                await msg.edit_text(f"❌ **[𝗘𝗥𝗥𝗢𝗥]** `Failed to add assistant. Please make me an admin or add assistant manually!`\n`{str(e)}`")
+                return False
+
+def check_approval(func):
+    """Decorator to block unauthorized groups"""
+    async def wrapper(client, message):
+        chat_id = message.chat.id
+        if chat_id != OWNER_ID and chat_id not in DB["approved_groups"] and message.chat.type in ["group", "supergroup"]:
+            return await message.reply("🚫 **[𝗔𝗖𝗖𝗘𝗦𝗦 𝗗𝗘𝗡𝗜𝗘𝗗]**\n`This group is not authorized to use the bot. Ask the owner to /approve this group.`")
+        
+        # Track served chats
+        if chat_id not in DB["served_chats"]:
+            DB["served_chats"].append(chat_id)
+            save_data()
+            
+        return await func(client, message)
+    return wrapper
+
+# ================= 🎮 UI/KEYBOARDS 🎮 =================
+def get_quality_keyboard():
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("🎬 360p", callback_data="q:360p"),
+            InlineKeyboardButton("🎬 480p", callback_data="q:480p")
+        ],
+        [
+            InlineKeyboardButton("📺 720p", callback_data="q:720p"),
+            InlineKeyboardButton("💎 1080p", callback_data="q:1080p")
+        ],
+        [InlineKeyboardButton("🛑 STOP STREAM", callback_data="stop_stream")]
+    ])
+
+def format_stream_message(name, category, quality):
+    return (
+        f"💠 **𝗦𝗧𝗥𝗘𝗔𝗠 𝗜𝗡𝗜𝗧𝗜𝗔𝗧𝗘𝗗** 💠\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"📡 **𝗡𝗮𝗺𝗲:** `{name.title()}`\n"
+        f"📁 **𝗖𝗮𝘁𝗲𝗴𝗼𝗿𝘆:** `{category.title()}`\n"
+        f"⚙️ **𝗤𝘂𝗮𝗹𝗶𝘁𝘆:** `{quality}`\n\n"
+        f"👨‍💻 **𝗠𝗮𝗱𝗲 𝗕𝘆:** [{OWNER_NAME}](tg://user?id={OWNER_ID})\n"
+        f"━━━━━━━━━━━━━━━━━━━━"
+    )
+
+# ================= 🚀 MAIN COMMANDS 🚀 =================
+@app.on_message(filters.command("start"))
+@check_approval
+async def start_cmd(client, message):
+    await message.reply(
+        f"💠 **𝗛𝗜𝗚𝗛-𝗧𝗘𝗖𝗛 𝗠𝗘𝗗𝗜𝗔 𝗦𝗬𝗦𝗧𝗘𝗠 𝗢𝗡𝗟𝗜𝗡𝗘** 💠\n\n"
+        f"🚀 **𝗔𝘃𝗮𝗶𝗹𝗮𝗯𝗹𝗲 𝗖𝗼𝗺𝗺𝗮𝗻𝗱𝘀:**\n"
+        f"▫️ `/channels` - Live TV Channels\n"
+        f"▫️ `/movies` - Available Movies\n"
+        f"▫️ `/series` - Available Series\n\n"
+        f"▶️ **𝗣𝗹𝗮𝘆𝗯𝗮𝗰𝗸:**\n"
+        f"▫️ `/livetv <name>` - Stream Live TV\n"
+        f"▫️ `/movie <name>` - Stream Movie\n"
+        f"▫️ `/series <name>` - Stream Series\n"
+        f"▫️ `/stopvc` - Stop current stream\n\n"
+        f"👨‍💻 **𝗠𝗮𝗱𝗲 𝗕𝘆:** [{OWNER_NAME}](tg://user?id={OWNER_ID})"
+    )
+
+@app.on_message(filters.command(["channels", "movies", "series"]))
+@check_approval
+async def browse_media(client, message):
+    cmd = message.command[0].lower()
+    data_dict = DB.get(cmd, {})
+    
+    if not data_dict:
+        return await message.reply(f"⚠️ **[𝗘𝗠𝗣𝗧𝗬]** `No {cmd} available currently.`")
+    
+    text = f"💠 **𝗔𝗩𝗔𝗜𝗟𝗔𝗕𝗟𝗘 {cmd.upper()}** 💠\n━━━━━━━━━━━━━━━━━━━━\n"
+    for idx, name in enumerate(data_dict.keys(), 1):
+        if len(text) > 3800:
+            text += "\n`...list too long, showing top results.`"
+            break
+        text += f"▫️ `{name.title()}`\n"
+    
+    await message.reply(text)
+
+# ================= ▶️ STREAMING SYSTEM ▶️ =================
+@app.on_message(filters.command(["livetv", "movie", "series"]))
+@check_approval
+async def play_media(client, message):
+    chat_id = message.chat.id
+    cmd = message.command[0].lower()
+    
+    if len(message.command) < 2:
+        return await message.reply(f"⚠️ **[𝗦𝗬𝗡𝗧𝗔𝗫]** `/{cmd} <Name>`")
+    
+    name = " ".join(message.command[1:]).strip().lower()
+    
+    category_map = {"livetv": "channels", "movie": "movies", "series": "series"}
+    db_key = category_map[cmd]
+    
+    if name not in DB[db_key]:
+        return await message.reply(f"❌ **[𝗡𝗢𝗧 𝗙𝗢𝗨𝗡𝗗]** `That {cmd} doesn't exist.`")
+    
+    stream_url = DB[db_key][name]
+    
+    # 1. Ensure Assistant is in VC
+    if not await ensure_assistant(chat_id, message):
+        return
+    
+    # 2. Start Playback
+    msg = await message.reply("🔄 **[𝗦𝗬𝗦𝗧𝗘𝗠]** `Connecting to global servers...`")
+    
+    try:
+        quality = "720p"
+        headers = get_headers_for_stream(stream_url)
+        
+        await call_py.play(
+            chat_id,
+            MediaStream(media_path=stream_url, video_parameters=QUALITY_PRESETS[quality], headers=headers)
+        )
+        
+        active_streams[chat_id] = {"name": name, "url": stream_url, "category": db_key, "msg_id": msg.id}
+        
+        await msg.edit_text(
+            format_stream_message(name, cmd, quality),
+            reply_markup=get_quality_keyboard()
+        )
+        
+    except Exception as e:
+        await msg.edit_text(f"❌ **[𝗦𝗧𝗥𝗘𝗔𝗠 𝗘𝗥𝗥𝗢𝗥]**\n`{str(e)[:200]}`")
+
+@app.on_message(filters.command("stopvc") & filters.group)
+@check_approval
+async def stop_vc(client, message):
+    try:
+        await call_py.leave_call(message.chat.id)
+        if message.chat.id in active_streams:
+            del active_streams[message.chat.id]
+        await message.reply("🛑 **[𝗦𝗬𝗦𝗧𝗘𝗠]** `Stream Terminated Successfully.`")
+    except Exception as e:
+        await message.reply(f"❌ **[𝗘𝗥𝗥𝗢𝗥]** `{str(e)[:100]}`")
+
+# ================= 🎛 INLINE BUTTONS (QUALITY CHANGE) 🎛 =================
+@app.on_callback_query(filters.regex(r"^(q:|stop_stream)"))
+async def callback_handler(client, callback_query: CallbackQuery):
+    chat_id = callback_query.message.chat.id
+    data = callback_query.data
+    
+    if data == "stop_stream":
+        try:
+            await call_py.leave_call(chat_id)
+            if chat_id in active_streams:
+                del active_streams[chat_id]
+            await callback_query.message.edit_text("🛑 **[𝗦𝗬𝗦𝗧𝗘𝗠]** `Stream Terminated by User.`")
+        except:
+            pass
+        return
+
+    # Quality Change Protocol
+    if chat_id not in active_streams:
+        return await callback_query.answer("❌ Stream is no longer active.", show_alert=True)
+    
+    new_quality = data.split(":")[1]
+    stream_info = active_streams[chat_id]
+    
+    await callback_query.answer(f"🔄 Switching to {new_quality}...", show_alert=False)
+    
+    try:
+        headers = get_headers_for_stream(stream_info["url"])
+        await call_py.change_stream(
+            chat_id,
+            MediaStream(
+                media_path=stream_info["url"],
+                video_parameters=QUALITY_PRESETS[new_quality],
+                headers=headers
+            )
+        )
+        
+        await callback_query.message.edit_text(
+            format_stream_message(stream_info["name"], stream_info["category"], new_quality),
+            reply_markup=get_quality_keyboard()
+        )
+    except Exception as e:
+        await callback_query.answer(f"Error: {str(e)[:50]}", show_alert=True)
+
+# ================= 👑 OWNER CONTROLS 👑 =================
+@app.on_message(filters.command("approve") & filters.user(OWNER_ID))
+async def approve_group(client, message):
+    try:
+        chat_id = int(message.command[1]) if len(message.command) > 1 else message.chat.id
+        if chat_id not in DB["approved_groups"]:
+            DB["approved_groups"].append(chat_id)
+            save_data()
+            await message.reply(f"✅ **[𝗔𝗣𝗣𝗥𝗢𝗩𝗘𝗗]** `Group {chat_id} has been authorized.`")
+        else:
+            await message.reply("⚠️ `Group is already approved.`")
+    except ValueError:
+        await message.reply("❌ Invalid Chat ID.")
+
+@app.on_message(filters.command("unapprove") & filters.user(OWNER_ID))
+async def unapprove_group(client, message):
+    try:
+        chat_id = int(message.command[1]) if len(message.command) > 1 else message.chat.id
+        if chat_id in DB["approved_groups"]:
+            DB["approved_groups"].remove(chat_id)
+            save_data()
+            await message.reply(f"🚫 **[𝗥𝗘𝗩𝗢𝗞𝗘𝗗]** `Group {chat_id} authorization removed.`")
+        else:
+            await message.reply("⚠️ `Group is not in approved list.`")
+    except ValueError:
+        pass
+
+@app.on_message(filters.command("botinfo") & filters.user(OWNER_ID))
+async def bot_info(client, message):
+    total_served = len(DB["served_chats"])
+    total_approved = len(DB["approved_groups"])
+    active_vc = len(active_streams)
+    
+    await message.reply(
+        f"💠 **𝗦𝗬𝗦𝗧𝗘𝗠 𝗗𝗜𝗔𝗚𝗡𝗢𝗦𝗧𝗜𝗖𝗦** 💠\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"🌐 **𝗧𝗼𝘁𝗮𝗹 𝗖𝗵𝗮𝘁𝘀:** `{total_served}`\n"
+        f"✅ **𝗔𝗽𝗽𝗿𝗼𝘃𝗲𝗱 𝗚𝗿𝗼𝘂𝗽𝘀:** `{total_approved}`\n"
+        f"🎙 **𝗔𝗰𝘁𝗶𝘃𝗲 𝗦𝘁𝗿𝗲𝗮𝗺𝘀:** `{active_vc}`\n"
+        f"📺 **𝗖𝗵𝗮𝗻𝗻𝗲𝗹𝘀:** `{len(DB['channels'])}`\n"
+        f"🎬 **𝗠𝗼𝘃𝗶𝗲𝘀:** `{len(DB['movies'])}`\n"
+        f"📼 **𝗦𝗲𝗿𝗶𝗲𝘀:** `{len(DB['series'])}`\n"
+        f"━━━━━━━━━━━━━━━━━━━━"
+    )
+
+@app.on_message(filters.command("broadcast") & filters.user(OWNER_ID))
+async def broadcast_msg(client, message):
+    if len(message.command) < 2:
+        return await message.reply("⚠️ **[𝗦𝗬𝗡𝗧𝗔𝗫]** `/broadcast <message>`")
+    
+    b_msg = message.text.split(None, 1)[1]
+    success, failed = 0, 0
+    
+    m = await message.reply("🚀 `Initiating Global Broadcast...`")
+    
+    for chat_id in DB["served_chats"]:
+        try:
+            await app.send_message(chat_id, f"📡 **[𝗦𝗬𝗦𝗧𝗘𝗠 𝗕𝗥𝗢𝗔𝗗𝗖𝗔𝗦𝗧]**\n\n{b_msg}")
+            success += 1
+            await asyncio.sleep(0.3)  # Flood wait prevention
+        except:
+            failed += 1
+            
+    await m.edit_text(f"✅ **𝗕𝗥𝗢𝗔𝗗𝗖𝗔𝗦𝗧 𝗖𝗢𝗠𝗣𝗟𝗘𝗧𝗘**\n▫️ `Success: {success}`\n▫️ `Failed: {failed}`")
+
+@app.on_message(filters.command(["addchannel", "addmovie", "addseries"]) & filters.user(OWNER_ID))
+async def add_media(client, message):
+    cmd = message.command[0].lower().replace("add", "")
+    if cmd == "channel": cmd = "channels"
+    elif cmd == "movie": cmd = "movies"
+    
+    if len(message.command) < 3:
+        return await message.reply(f"⚠️ **[𝗦𝗬𝗡𝗧𝗔𝗫]** `/add{cmd.replace('s','')} <URL> <Name>`")
+    
+    url = message.command[1]
+    name = " ".join(message.command[2:]).strip().lower()
+    
+    DB[cmd][name] = url
+    save_data()
+    
+    await message.reply(
+        f"✅ **[𝗗𝗔𝗧𝗔𝗕𝗔𝗦𝗘 𝗨𝗣𝗗𝗔𝗧𝗘𝗗]**\n"
+        f"📁 **𝗖𝗮𝘁𝗲𝗴𝗼𝗿𝘆:** `{cmd.title()}`\n"
+        f"🏷 **𝗡𝗮𝗺𝗲:** `{name.title()}`\n"
+        f"🔗 **𝗨𝗥𝗟:** `{url[:40]}...`"
+    )
+
+# ================= 🔌 SYSTEM BOOT 🔌 =================
+async def main():
+    global USER_ID
+    
+    Thread(target=run_flask, daemon=True).start()
+    print("🌐 Web Server Running...")
+    
+    await app.start()
+    await user_app.start()
+    
+    USER_ID = user_app.me.id
+    print(f"🤖 Assistant ID Loaded: {USER_ID}")
+    
+    await call_py.start()
+    print("💠 HIGH-TECH STREAMING BOT ONLINE 💠")
+    
+    try:
+        await app.send_message(OWNER_ID, "💠 **𝗦𝗬𝗦𝗧𝗘𝗠 𝗢𝗡𝗟𝗜𝗡𝗘**\n`All protocols operating nominally.`")
+    except:
+        pass
+        
+    await idle()
+    
+    await app.stop()
+    await user_app.stop()
+
+if __name__ == "__main__":
+    asyncio.get_event_loop().run_until_complete(main())
