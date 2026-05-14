@@ -49,6 +49,10 @@ flask_app = Flask(__name__)
 def home():
     return f"📺 {BOT_NAME} System Online"
 
+@flask_app.route('/health')
+def health():
+    return {"status": "ok", "system": "online"}, 200
+
 def run_flask():
     flask_app.run(host='0.0.0.0', port=PORT, debug=False)
 
