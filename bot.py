@@ -22,8 +22,8 @@ SESSION_STRING = "BQH6T14AAJTjZpMC1EmZQ8SQ4qRYEejNYxPUQgGYuqXllq-VZaWLQiuTedXk61
 OWNER_ID = 8242523973
 
 # High-Tech Branding
-BOT_NAME = "𝙇𝙤𝙘𝙖𝙡 𝙎𝙩𝙧𝙚𝙖𝙢 𝙏𝙑 📺"
-CREDITS = "\n\n⚡ **Made By [𝐵 𝑙 𝑎 𝑧 𝑒](tg://user?id=8242523973)**"
+BOT_NAME = "ɱεσω รƭ૨εαɱ 📺"
+CREDITS = "\n\n⚡ **Made By [ꪑꫀꪮ᭙](tg://user?id=8242523973)**"
 
 # Railway Port & Proxy
 PORT = int(os.environ.get("PORT", 8080))
