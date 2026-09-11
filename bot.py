@@ -17,13 +17,13 @@ import os
 # ================= Configuration =================
 API_ID = 33181534
 API_HASH = "ef2c1ed56bb1fc743b3fbc244582efbb"
-BOT_TOKEN = "8607187465:AAHPfgmQtMFb5xCnlXlXYU1QHMr8YHyJy3g"
+BOT_TOKEN = "8524475183:AAHT3RwvPus3zgWBkMETxuNBmFx-iF1SBlQ"
 SESSION_STRING = "BQH6T14AU2Wm2DcvcijbThSdX8TwqQo6IFrO0Q1w5sPQPmLCaAq6TMvWuRd01xAlCClvYWtS5RhmTPZadtAkEsQ8sv0ajPlEXPUzQdx8QkBeNrGgca7CyCbKKqvht6wVRoBGymaEbLbS815su-hwmhc9hZSF0aELfea9J2EHaV7gYftkgZQPcVTTAqp8u10dYfchjkgZ3m9ZgoP_Apolcyrx7jtbMjAYcfSJnxMF-2iwaLjG5-qqHXiYxc5h_j3dRyLa4DqTVSEgguIr2NTe2Lzx7ZjpfYfqjHu6sIegecDYAOBigRS9j1vqX2EJDMMvcwsXbCpHHG6zHH9usXIm5PSofgAAAAILtc1CAA"
-OWNER_ID = 8683720440
+OWNER_ID = 8242523973
 
 # High-Tech Branding
-BOT_NAME = "𝙇𝙤𝙘𝙖𝙡 𝙎𝙩𝙧𝙚𝙖𝙢 𝙏𝙑 📺"
-CREDITS = "\n\n⚡ **Made By [𝐵 𝑙 𝑎 𝑧 𝑒](tg://user?id=8717767927)**"
+BOT_NAME = "ɱεσω รƭ૨εαɱ 📺"
+CREDITS = "\n\n⚡ **Made By [ꪑꫀꪮ᭙](tg://user?id=8242523973)**"
 
 # Railway Port & Proxy
 PORT = int(os.environ.get("PORT", 8080))
