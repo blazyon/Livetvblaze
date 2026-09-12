@@ -31,7 +31,7 @@ SESSION_STRING = os.environ.get(
 )
 OWNER_ID = int(os.environ.get("OWNER_ID", "8242523973"))
 TMDB_API_KEY = os.environ.get("TMDB_API_KEY", "9080d00414da749eb0355ac918987719")  # get a free key at themoviedb.org
-SUPPORT_URL = os.environ.get("SUPPORT_URL", "https://t.me/MeowpawSupport")
+SUPPORT_URL = os.environ.get("SUPPORT_URL", "https://t.me/MeowStreamSupport")
 UPDATES_URL = os.environ.get("UPDATES_URL", "https://t.me/MeowpawSupport")
 
 BOT_NAME = "ɱεσω รƭ૨εαɱ 📺"
