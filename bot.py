@@ -30,8 +30,8 @@ SESSION_STRING = os.environ.get(
     "BQH6T14ALjIjmZAb8MlRkWdpYDT3va81anw3Qf1RFcqA46KnAbzyjFIikJkEjQ98jz0XUn97iuQg0XmrtVw7Ul5OIuzlpahfD5UyWY94aMpf9-WwyZi6V1N0mKKLTMXIY_1SZuV_S4VDNWGCSXEAuwZ41JJdvrxSrIavDjp50667qAGinuVw40QeKbs3Q2XooskSvzRqh1O0UxQBMddBDE83eG9ViW-S5X_2nqUzhZTP_-YhZ9m7xjWf1NwsdoCqf0cT6aYniKt38lb5D0uyq_s72BCRqZhSEb2S_ZD2LCycZ80g9rXeMFNrH7CinhxgjYz5O2iyHzKuJmH7Jvkhl8BruYeIXwAAAAILtc1CAA",
 )
 OWNER_ID = int(os.environ.get("OWNER_ID", "8242523973"))
-TMDB_API_KEY = os.environ.get("TMDB_API_KEY", "9080d00414da749eb0355ac918987719")  # get a free key at themoviedb.org
-SUPPORT_URL = os.environ.get("SUPPORT_URL", "https://t.me/MeowStreamSupport")
+TMDB_API_KEY = os.environ.get("TMDB_API_KEY", "")  # get a free key at themoviedb.org
+SUPPORT_URL = os.environ.get("SUPPORT_URL", "https://t.me/MeowpawSupport")
 UPDATES_URL = os.environ.get("UPDATES_URL", "https://t.me/MeowpawSupport")
 
 BOT_NAME = "ɱεσω รƭ૨εαɱ 📺"
@@ -54,8 +54,8 @@ QUALITY_PRESETS = {
 }
 
 DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bot_data.json")
-START_BANNER_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "start_banner.png")
-_start_banner_file_id = None  # cached after first send so we don't re-upload the file every time
+START_BANNER_URL = os.environ.get("START_BANNER_URL", "https://i.ibb.co/5WjFTqvr/file-0000000093dc820bbaf14a91927d4a4c.png")
+_start_banner_file_id = None  # cached after first send so Telegram doesn't re-fetch the URL every time
 
 # Known Telegram message-effect IDs (fire / thumbs-up / heart / party / thumbs-down / poop)
 EFFECT_IDS = {
@@ -90,17 +90,22 @@ E_LINK = pe("4916086774649848789", "🔗")
 
 CREDITS = f"\n\n{E_BOLT} <b>Made By <a href='tg://user?id={OWNER_ID}'>ɱεσω</a></b>"
 
-# ================= Stylized font =================
+# ================= Stylized font (small caps, as provided) =================
 _FANCY = {
-    'a': 'α', 'b': 'Ⴆ', 'c': 'ƈ', 'd': '∂', 'e': 'ε', 'f': 'ƒ', 'g': 'ɠ',
-    'h': 'ԋ', 'i': 'ι', 'j': 'ʝ', 'k': 'ƙ', 'l': 'ℓ', 'm': 'ɱ', 'n': 'ɳ',
-    'o': 'σ', 'p': 'ρ', 'q': 'ɋ', 'r': '૨', 's': 'ร', 't': 'ƭ', 'u': 'υ',
-    'v': 'ʋ', 'w': 'ω', 'x': 'ϰ', 'y': 'ყ', 'z': 'ȥ',
+    'a': 'ᴀ', 'b': 'ʙ', 'c': 'ᴄ', 'd': 'ᴅ', 'e': 'ᴇ', 'f': 'ғ', 'g': 'ɢ',
+    'h': 'ʜ', 'i': 'ɪ', 'j': 'ɪ', 'k': 'ᴋ', 'l': 'ʟ', 'm': 'ᴍ', 'n': 'ɴ',
+    'o': 'ᴏ', 'p': 'ᴘ', 'q': 'ǫ', 'r': 'ʀ', 's': 's', 't': 'ᴛ', 'u': 'ᴜ',
+    'v': 'ᴠ', 'w': 'ᴡ', 'x': 'x', 'y': 'ʏ', 'z': 'ᴢ',
 }
 
 
 def fancy(text: str) -> str:
     return "".join(_FANCY.get(c.lower(), c) for c in text)
+
+
+def quote(text: str) -> str:
+    """Wrap message body in Telegram's blockquote formatting."""
+    return f"<blockquote>{text}</blockquote>"
 
 
 def fmt_time(seconds: int) -> str:
@@ -160,7 +165,7 @@ def load_data():
 
 # ================= TMDB =================
 async def fetch_tmdb_art(title: str, media_type: str):
-    """media_type: 'movie' or 'tv'. Returns dict with backdrop url + runtime (minutes) or None."""
+    """media_type: 'movie' or 'tv'. Returns dict with backdrop url, logo url, and runtime (minutes) or None."""
     if not TMDB_API_KEY:
         return None
     cache_key = f"{media_type}:{title}"
@@ -180,29 +185,101 @@ async def fetch_tmdb_art(title: str, media_type: str):
             if not results:
                 return None
             item = results[0]
+            item_id = item.get("id")
             backdrop_path = item.get("backdrop_path")
             backdrop = f"https://image.tmdb.org/t/p/w780{backdrop_path}" if backdrop_path else None
 
             runtime = None
-            if media_type == "movie" and backdrop_path:
-                detail_url = f"https://api.themoviedb.org/3/movie/{item.get('id')}"
+            if media_type == "movie" and item_id:
+                detail_url = f"https://api.themoviedb.org/3/movie/{item_id}"
                 async with session.get(detail_url, params={"api_key": TMDB_API_KEY}, timeout=15) as resp2:
                     if resp2.status == 200:
                         detail = await resp2.json()
                         runtime = detail.get("runtime")
-            elif media_type == "tv":
-                detail_url = f"https://api.themoviedb.org/3/tv/{item.get('id')}"
+            elif media_type == "tv" and item_id:
+                detail_url = f"https://api.themoviedb.org/3/tv/{item_id}"
                 async with session.get(detail_url, params={"api_key": TMDB_API_KEY}, timeout=15) as resp2:
                     if resp2.status == 200:
                         detail = await resp2.json()
                         ert = detail.get("episode_run_time") or []
                         runtime = ert[0] if ert else None
 
-            result = {"backdrop": backdrop, "runtime": runtime}
+            logo = None
+            if item_id:
+                images_url = f"https://api.themoviedb.org/3/{search_endpoint}/{item_id}/images"
+                async with session.get(images_url, params={"api_key": TMDB_API_KEY}, timeout=15) as resp3:
+                    if resp3.status == 200:
+                        images = await resp3.json()
+                        logos = images.get("logos") or []
+                        # Prefer an English logo, else just take the first available.
+                        chosen = next((l for l in logos if l.get("iso_639_1") == "en"), logos[0] if logos else None)
+                        if chosen and chosen.get("file_path"):
+                            logo = f"https://image.tmdb.org/t/p/w500{chosen['file_path']}"
+
+            result = {"backdrop": backdrop, "logo": logo, "runtime": runtime}
             TMDB_CACHE[cache_key] = result
             return result
     except Exception as e:
         print(f"⚠️ TMDB fetch failed for '{title}': {e}")
+        return None
+
+
+async def compose_banner(backdrop_url, logo_url):
+    """Downloads the backdrop + title logo and composites the logo onto the left side. Returns BytesIO(png) or None."""
+    if not backdrop_url:
+        return None
+    try:
+        from PIL import Image
+    except ImportError:
+        print("⚠️ Pillow not installed — add 'Pillow' to requirements.txt to enable title-logo banners. Using plain backdrop instead.")
+        return None
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(backdrop_url, timeout=20) as resp:
+                if resp.status != 200:
+                    return None
+                backdrop_bytes = await resp.read()
+
+            logo_bytes = None
+            if logo_url:
+                try:
+                    async with session.get(logo_url, timeout=20) as resp2:
+                        if resp2.status == 200:
+                            logo_bytes = await resp2.read()
+                except Exception:
+                    logo_bytes = None
+
+        backdrop = Image.open(BytesIO(backdrop_bytes)).convert("RGBA")
+        if logo_bytes:
+            logo = Image.open(BytesIO(logo_bytes)).convert("RGBA")
+            # Scale logo to ~38% of backdrop width, preserve aspect ratio.
+            target_w = int(backdrop.width * 0.38)
+            ratio = target_w / logo.width
+            target_h = int(logo.height * ratio)
+            max_h = int(backdrop.height * 0.6)
+            if target_h > max_h:
+                ratio = max_h / logo.height
+                target_h = max_h
+                target_w = int(logo.width * ratio)
+            logo = logo.resize((max(1, target_w), max(1, target_h)))
+
+            # Darken the left portion slightly so the logo stays readable over busy art.
+            overlay = Image.new("RGBA", backdrop.size, (0, 0, 0, 0))
+            shade = Image.new("RGBA", (int(backdrop.width * 0.5), backdrop.height), (0, 0, 0, 110))
+            overlay.paste(shade, (0, 0))
+            backdrop = Image.alpha_composite(backdrop, overlay)
+
+            pad_x, pad_y = int(backdrop.width * 0.04), int((backdrop.height - target_h) / 2)
+            backdrop.paste(logo, (pad_x, pad_y), logo)
+
+        out = BytesIO()
+        backdrop.convert("RGB").save(out, format="JPEG", quality=90)
+        out.seek(0)
+        out.name = "banner.jpg"
+        return out
+    except Exception as e:
+        print(f"⚠️ compose_banner failed: {e}")
         return None
 
 
@@ -256,6 +333,35 @@ async def ensure_assistant_in_chat(chat_id, message):
             return False
 
 
+def btn(text, callback_data=None, url=None, color=None):
+    """
+    InlineKeyboardButton wrapper that tries Bot API 7.10+ button color styling
+    (Primary/Danger/Success) if the installed pyrofork build supports it,
+    and silently falls back to a normal button otherwise.
+    """
+    kwargs = {}
+    if callback_data is not None:
+        kwargs["callback_data"] = callback_data
+    if url is not None:
+        kwargs["url"] = url
+    if color:
+        try:
+            return InlineKeyboardButton(text, color=color, **kwargs)
+        except TypeError:
+            pass
+    return InlineKeyboardButton(text, **kwargs)
+
+
+async def is_admin_or_owner(client, chat_id, user_id):
+    if user_id == OWNER_ID:
+        return True
+    try:
+        member = await client.get_chat_member(chat_id, user_id)
+        return member.status in ("administrator", "creator") or str(member.status).lower() in ("administrator", "creator", "owner")
+    except Exception:
+        return False
+
+
 def check_approval(func):
     async def wrapper(client, message):
         is_group = message.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]
@@ -263,7 +369,7 @@ def check_approval(func):
         is_owner = message.from_user.id == OWNER_ID
         if is_group and not is_approved and not is_owner:
             return await message.reply(
-                f"{E_DENY} <b>ACCESS DENIED</b>\nThis Group (<code>{message.chat.id}</code>) is not authorized.{CREDITS}",
+                quote(f"{E_DENY} <b>ACCESS DENIED</b>\nThis Group (<code>{message.chat.id}</code>) is not authorized.") + CREDITS,
                 parse_mode=ParseMode.HTML, disable_web_page_preview=True,
             )
         return await func(client, message)
@@ -297,14 +403,25 @@ async def robust_play(chat_id, media_stream, retries=3):
 
 
 def make_seek_stream(url, quality, offset_seconds):
-    kwargs = {"video_parameters": quality}
-    if offset_seconds > 0:
+    """
+    Build a MediaStream, applying a start-time offset for seeking.
+    Different py-tgcalls releases have used different kwarg names for the raw
+    ffmpeg args, so we try the known candidates in order and use whichever one
+    the installed version actually accepts (TypeError on an unknown kwarg is
+    raised immediately at construction time, so this is safe to try).
+    """
+    if offset_seconds <= 0:
+        return MediaStream(url, video_parameters=quality)
+
+    ss_arg = f"-ss {int(offset_seconds)}"
+    candidates = ("additional_ffmpeg_parameters", "ffmpeg_parameters", "custom_ffmpeg_parameters")
+    for kwarg_name in candidates:
         try:
-            return MediaStream(url, video_parameters=quality, additional_ffmpeg_parameters=f"-ss {int(offset_seconds)}")
+            return MediaStream(url, video_parameters=quality, **{kwarg_name: ss_arg})
         except TypeError:
-            # Installed py-tgcalls version doesn't support additional_ffmpeg_parameters — falls back to no-seek.
-            return MediaStream(url, **kwargs)
-    return MediaStream(url, **kwargs)
+            continue
+    print(f"⚠️ No known ffmpeg-seek kwarg accepted by this py-tgcalls build — seeking will not work until this is verified against your installed version.")
+    return MediaStream(url, video_parameters=quality)
 
 
 def stream_key(media_type, name, ep_code=None):
@@ -520,43 +637,41 @@ async def receive_pending_logo(client, message):
 @app.on_message(filters.command(["channels", "allchannels"]))
 async def show_channels(client, message):
     if not CHANNELS:
-        return await message.reply(f"❌ <b>No Channels Found.</b>{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+        return await message.reply(quote(f"❌ <b>No Channels Found.</b>") + CREDITS, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
 
     if len(CHANNELS) > LIST_FILE_THRESHOLD:
         text_content = "📺 All Available Channels\n\n" + "\n".join([f"{idx+1}. {name.title()}" for idx, name in enumerate(CHANNELS.keys())])
         file = BytesIO(text_content.encode('utf-8'))
         file.name = "channels.txt"
-        return await message.reply_document(file, caption=f"📂 Here are the <b>{len(CHANNELS)}</b> available channels.{CREDITS}", parse_mode=ParseMode.HTML)
+        return await message.reply_document(file, caption=quote(f"📂 Here are the <b>{len(CHANNELS)}</b> available channels.") + CREDITS, parse_mode=ParseMode.HTML)
 
-    text = f"╭━━━[ {E_CAM} <b>{fancy('LIVE CHANNELS')}</b> ]━━━╮\n┃\n"
+    body = f"{E_CAM} <b>{fancy('live channels')}</b>\n\n"
     for idx, name in enumerate(CHANNELS.keys(), 1):
-        text += f"┃ ❖ <code>{idx:02d}.</code> <b>{esc(name.title())}</b>\n"
-    text += f"┃\n╰━━━━━━━━━━━━━━━━━╯{CREDITS}"
-    await message.reply(text, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+        body += f"❖ <code>{idx:02d}.</code> <b>{esc(name.title())}</b>\n"
+    await message.reply(quote(body) + CREDITS, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
 
 
 @app.on_message(filters.command("movies"))
 async def show_movies(client, message):
     if not MOVIES:
-        return await message.reply(f"❌ <b>No Movies Found.</b>{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+        return await message.reply(quote(f"❌ <b>No Movies Found.</b>") + CREDITS, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
 
     if len(MOVIES) > LIST_FILE_THRESHOLD:
         text_content = "🎬 All Available Movies\n\n" + "\n".join([f"{idx+1}. {name.title()}" for idx, name in enumerate(MOVIES.keys())])
         file = BytesIO(text_content.encode('utf-8'))
         file.name = "movies.txt"
-        return await message.reply_document(file, caption=f"📂 Here are the <b>{len(MOVIES)}</b> available movies.{CREDITS}", parse_mode=ParseMode.HTML)
+        return await message.reply_document(file, caption=quote(f"📂 Here are the <b>{len(MOVIES)}</b> available movies.") + CREDITS, parse_mode=ParseMode.HTML)
 
-    text = f"╭━━━[ 🎬 <b>{fancy('MOVIES LIST')}</b> ]━━━╮\n┃\n"
+    body = f"🎬 <b>{fancy('movies list')}</b>\n\n"
     for idx, name in enumerate(MOVIES.keys(), 1):
-        text += f"┃ ❖ <code>{idx:02d}.</code> <b>{esc(name.title())}</b>\n"
-    text += f"┃\n╰━━━━━━━━━━━━━━━━━╯{CREDITS}"
-    await message.reply(text, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+        body += f"❖ <code>{idx:02d}.</code> <b>{esc(name.title())}</b>\n"
+    await message.reply(quote(body) + CREDITS, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
 
 
 @app.on_message(filters.command("series"))
 async def show_series(client, message):
     if not SERIES:
-        return await message.reply(f"❌ <b>No Series Found.</b>{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+        return await message.reply(quote(f"❌ <b>No Series Found.</b>") + CREDITS, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
 
     if len(SERIES) > LIST_FILE_THRESHOLD:
         text_content = "🍿 All Available Series\n\n"
@@ -564,13 +679,12 @@ async def show_series(client, message):
             text_content += f"{idx+1}. {show.title()} ({len(eps)} episodes)\n"
         file = BytesIO(text_content.encode('utf-8'))
         file.name = "series.txt"
-        return await message.reply_document(file, caption=f"📂 Here are the <b>{len(SERIES)}</b> available series.{CREDITS}", parse_mode=ParseMode.HTML)
+        return await message.reply_document(file, caption=quote(f"📂 Here are the <b>{len(SERIES)}</b> available series.") + CREDITS, parse_mode=ParseMode.HTML)
 
-    text = f"╭━━━[ 🍿 <b>{fancy('SERIES LIST')}</b> ]━━━╮\n┃\n"
+    body = f"🍿 <b>{fancy('series list')}</b>\n\n"
     for show, eps in SERIES.items():
-        text += f"┃ ❖ <b>{esc(show.title())}</b> (Episodes: {len(eps)})\n"
-    text += f"┃\n╰━━━━━━━━━━━━━━━━━╯{CREDITS}"
-    await message.reply(text, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+        body += f"❖ <b>{esc(show.title())}</b> (Episodes: {len(eps)})\n"
+    await message.reply(quote(body) + CREDITS, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
 
 
 # ================= Playback & Conflict Resolution =================
@@ -579,7 +693,7 @@ async def show_series(client, message):
 async def stream_media(client, message):
     cmd = message.command[0]
     if len(message.command) < 2:
-        return await message.reply(f"{E_WARN} Usage: <code>/{cmd} name</code>", parse_mode=ParseMode.HTML)
+        return await message.reply(quote(f"{E_WARN} Usage: <code>/{cmd} name</code>"), parse_mode=ParseMode.HTML)
     query = " ".join(message.command[1:]).strip().lower()
 
     db, media_type = {}, ""
@@ -593,10 +707,10 @@ async def stream_media(client, message):
 
     matches = [name for name in db if query in name]
     if not matches:
-        return await message.reply(f"❌ <b>No {media_type} found matching that name!</b>{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+        return await message.reply(quote(f"❌ <b>No {media_type} found matching that name!</b>") + CREDITS, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
 
     if len(matches) == 1:
-        return await _start_stream(client, message, matches[0], media_type, raw_query=" ".join(message.command[1:]))
+        return await _start_stream(client, message, matches[0], media_type, raw_query=" ".join(message.command[1:]), user_message=message)
 
     buttons = []
     for name in matches[:20]:
@@ -604,7 +718,11 @@ async def stream_media(client, message):
         PLAY_REQUESTS[req_id] = (name, " ".join(message.command[1:]))
         buttons.append([InlineKeyboardButton(name.title(), callback_data=f"resolve_{media_type}_{req_id}")])
 
-    await message.reply(f"🤔 <b>Found multiple results for {esc(query.title())}. Please choose one:</b>", parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(buttons))
+    await message.reply(quote(f"🤔 <b>Found multiple results for {esc(query.title())}. Please choose one:</b>"), parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(buttons))
+    try:
+        await message.delete()
+    except Exception:
+        pass
 
 
 @app.on_callback_query(filters.regex(r"^resolve_"))
@@ -628,7 +746,7 @@ def _resolve_episode(name, raw_query):
     return None
 
 
-async def _start_stream(client, message, name, media_type, raw_query="", from_user=None):
+async def _start_stream(client, message, name, media_type, raw_query="", from_user=None, user_message=None):
     chat_id = message.chat.id
     if not await ensure_assistant_in_chat(chat_id, message):
         return
@@ -641,7 +759,7 @@ async def _start_stream(client, message, name, media_type, raw_query="", from_us
     elif media_type == "series":
         ep_code = _resolve_episode(name, raw_query)
         if not ep_code:
-            return await message.reply(f"{E_WARN} Episode not specified or not found. Use format: <code>/playseries {esc(name.title())} - s01e01</code>{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+            return await message.reply(quote(f"{E_WARN} Episode not specified or not found. Use format: <code>/playseries {esc(name.title())} - s01e01</code>") + CREDITS, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
         url = SERIES[name][ep_code]
         display_name = f"{name.title()} [{ep_code.upper()}]"
         type_label = "🍿 Series"
@@ -649,7 +767,7 @@ async def _start_stream(client, message, name, media_type, raw_query="", from_us
         return
 
     if not url:
-        return await message.reply("❌ Could not find a valid stream URL.")
+        return await message.reply(quote("❌ Could not find a valid stream URL."), parse_mode=ParseMode.HTML)
 
     key = stream_key(media_type, name, ep_code)
     resume_key = f"{chat_id}:{key}"
@@ -657,17 +775,22 @@ async def _start_stream(client, message, name, media_type, raw_query="", from_us
 
     if media_type in ("movie", "series") and saved_pos > 30:
         buttons = InlineKeyboardMarkup([[
-            InlineKeyboardButton(f"▶️ Resume {fmt_time(saved_pos)}", callback_data=f"startat_{saved_pos}_{uuid.uuid4().hex[:6]}"),
-            InlineKeyboardButton("🔁 Start Over", callback_data="startat_0_x"),
+            btn(f"▶️ Resume {fmt_time(saved_pos)}", callback_data=f"startat_{saved_pos}_{uuid.uuid4().hex[:6]}", color="success"),
+            btn("🔁 Start Over", callback_data="startat_0_x", color="primary"),
         ]])
-        await message.reply(f"{E_PIN} You previously stopped <b>{esc(display_name)}</b> at <b>{fmt_time(saved_pos)}</b>. Resume or start over?", parse_mode=ParseMode.HTML, reply_markup=buttons)
+        await message.reply(quote(f"{E_PIN} You previously stopped <b>{esc(display_name)}</b> at <b>{fmt_time(saved_pos)}</b>. Resume or start over?"), parse_mode=ParseMode.HTML, reply_markup=buttons)
         # Store what the resume/start-over callback needs, keyed by its own callback_data.
         for row in buttons.inline_keyboard:
-            for btn in row:
-                PLAY_REQUESTS[btn.callback_data] = (name, media_type, ep_code, display_name, type_label, url)
+            for button in row:
+                PLAY_REQUESTS[button.callback_data] = (name, media_type, ep_code, display_name, type_label, url)
+        if user_message:
+            try:
+                await user_message.delete()
+            except Exception:
+                pass
         return
 
-    await _launch_stream(client, message, name, media_type, ep_code, display_name, type_label, url, offset=0)
+    await _launch_stream(client, message, name, media_type, ep_code, display_name, type_label, url, offset=0, user_message=user_message)
 
 
 @app.on_callback_query(filters.regex(r"^startat_"))
@@ -682,9 +805,17 @@ async def resume_choice(client, callback_query):
     await _launch_stream(client, callback_query.message, name, media_type, ep_code, display_name, type_label, url, offset=offset)
 
 
-async def _launch_stream(client, message, name, media_type, ep_code, display_name, type_label, url, offset=0):
+async def _launch_stream(client, message, name, media_type, ep_code, display_name, type_label, url, offset=0, user_message=None):
     chat_id = message.chat.id
-    msg = await message.reply(f"{E_BOLT} <b>Initializing {type_label}...</b>", parse_mode=ParseMode.HTML)
+
+    # Delete the user's own command message (needs bot to be a group admin — safe no-op otherwise).
+    if user_message:
+        try:
+            await user_message.delete()
+        except Exception:
+            pass
+
+    msg = await message.reply(quote(f"{E_BOLT} <b>Initializing {type_label}...</b>"), parse_mode=ParseMode.HTML)
 
     # Delete the previous "Now Streaming" card for this chat so old data doesn't clutter the group.
     prev = CURRENT_STREAMS.get(chat_id)
@@ -700,16 +831,15 @@ async def _launch_stream(client, message, name, media_type, ep_code, display_nam
     try:
         await robust_play(chat_id, stream)
     except Exception as e:
-        return await msg.edit_text(f"❌ <b>Stream Failed!</b>\n<code>{esc(str(e)[:150])}</code>{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+        return await msg.edit_text(quote(f"❌ <b>Stream Failed!</b>\n<code>{esc(str(e)[:150])}</code>") + CREDITS, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
 
     token = uuid.uuid4().hex
     tmdb_info = None
-    logo = None
+    logo_url = None
     if media_type in ("movie", "series"):
-        lookup_title = name if media_type == "movie" else name
-        tmdb_info = await fetch_tmdb_art(lookup_title, "movie" if media_type == "movie" else "tv")
+        tmdb_info = await fetch_tmdb_art(name, "movie" if media_type == "movie" else "tv")
     elif media_type == "channel":
-        logo = CHANNEL_LOGOS.get(name)
+        logo_url = CHANNEL_LOGOS.get(name)
 
     duration = None
     if tmdb_info and tmdb_info.get("runtime"):
@@ -722,14 +852,18 @@ async def _launch_stream(client, message, name, media_type, ep_code, display_nam
         "token": token, "msg_id": None,
     }
 
-    keyboard = _build_stream_keyboard()
-    caption = _render_stream_card(display_name, type_label, "720p", offset, duration)
+    caption = _render_stream_card(display_name, type_label, "720p")
+    keyboard = _build_stream_keyboard(offset, duration, media_type)
 
-    art_url = (tmdb_info or {}).get("backdrop") if tmdb_info else logo
     sent = None
-    if art_url:
+    banner_file = None
+    if tmdb_info and tmdb_info.get("backdrop"):
+        banner_file = await compose_banner(tmdb_info.get("backdrop"), tmdb_info.get("logo"))
+
+    art = banner_file or (tmdb_info or {}).get("backdrop") if tmdb_info else logo_url
+    if art:
         try:
-            sent = await client.send_photo(chat_id, art_url, caption=caption, parse_mode=ParseMode.HTML, reply_markup=keyboard)
+            sent = await client.send_photo(chat_id, art, caption=caption, parse_mode=ParseMode.HTML, reply_markup=keyboard)
         except Exception:
             sent = None
     if not sent:
@@ -747,38 +881,41 @@ async def _launch_stream(client, message, name, media_type, ep_code, display_nam
     CURRENT_STREAMS[chat_id]["msg_id"] = sent.id
 
     try:
-        await reply_effect(message, "🎬", effect="fire", quote=False)
+        effect_msg = await reply_effect(message, "🎬", effect="fire", quote=False)
+        if effect_msg:
+            asyncio.create_task(_delete_after(effect_msg, 4))
     except Exception:
         pass
 
     asyncio.create_task(_progress_loop(chat_id, token))
 
 
-def _render_stream_card(display_name, type_label, quality, elapsed, duration):
-    bar = progress_bar(elapsed, duration) if duration else "🔴 <b>LIVE</b>"
-    return (
-        f"╭━━━[ {E_SPARK} <b>{fancy('NOW STREAMING')}</b> ]━━━╮\n"
-        f"┃\n"
-        f"┃ ❖ <b>Title:</b> {esc(display_name)}\n"
-        f"┃ ❖ <b>Type:</b> {type_label}\n"
-        f"┃ ❖ <b>Quality:</b> {quality} {E_CHECK}\n"
-        f"┃ ❖ <b>Progress:</b> {bar}\n"
-        f"┃\n"
-        f"╰━━━━━━━━━━━━━━━━━╯{CREDITS}"
-    )
+async def _delete_after(message, delay_seconds):
+    await asyncio.sleep(delay_seconds)
+    try:
+        await message.delete()
+    except Exception:
+        pass
 
 
-def _build_stream_keyboard():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton(q.upper(), callback_data=f"q_{q}") for q in ["360p", "480p", "720p", "1080p"]],
-        [
-            InlineKeyboardButton("⏪10s", callback_data="seek_-10"),
-            InlineKeyboardButton("⏩10s", callback_data="seek_10"),
-            InlineKeyboardButton("⏪60s", callback_data="seek_-60"),
-            InlineKeyboardButton("⏩60s", callback_data="seek_60"),
-        ],
-        [InlineKeyboardButton("⏹ Stop", callback_data="stop_stream")],
-    ])
+def _render_stream_card(display_name, type_label, quality):
+    return quote(
+        f"{E_SPARK} <b>{fancy('now streaming')}</b>\n\n"
+        f"❖ <b>Title:</b> {esc(display_name)}\n"
+        f"❖ <b>Type:</b> {type_label}\n"
+        f"❖ <b>Quality:</b> {quality} {E_CHECK}"
+    ) + CREDITS
+
+
+def _build_stream_keyboard(elapsed, duration, media_type):
+    time_label = f"⏱ {fmt_time(elapsed)} / {fmt_time(duration)}" if duration else f"⏱ {fmt_time(elapsed)} / 🔴 LIVE"
+    rows = [
+        [btn(time_label, callback_data="noop")],
+        [btn(q.upper(), callback_data=f"q_{q}", color="primary") for q in ["360p", "480p", "720p", "1080p"]],
+        [btn("⏹ Stop", callback_data="stop_stream", color="danger")],
+        [btn("👑 Support", url=SUPPORT_URL, color="primary"), btn("🔔 Updates", url=UPDATES_URL, color="primary")],
+    ]
+    return InlineKeyboardMarkup(rows)
 
 
 async def _progress_loop(chat_id, token):
@@ -790,41 +927,16 @@ async def _progress_loop(chat_id, token):
         elapsed = time.time() - stream["start_ts"]
         if stream.get("duration") and elapsed >= stream["duration"]:
             return
-        caption = _render_stream_card(stream["name"], stream["type"], stream["quality"], elapsed, stream.get("duration"))
+        keyboard = _build_stream_keyboard(elapsed, stream.get("duration"), stream["media_type"])
         try:
-            await app.edit_message_caption(chat_id, stream["msg_id"], caption, parse_mode=ParseMode.HTML, reply_markup=_build_stream_keyboard())
+            await app.edit_message_reply_markup(chat_id, stream["msg_id"], reply_markup=keyboard)
         except Exception:
-            try:
-                await app.edit_message_text(chat_id, stream["msg_id"], caption, parse_mode=ParseMode.HTML, reply_markup=_build_stream_keyboard())
-            except Exception:
-                pass
+            pass
 
 
-@app.on_callback_query(filters.regex(r"^seek_"))
-async def seek_callback(client, callback_query):
-    chat_id = callback_query.message.chat.id
-    delta = int(callback_query.data.split("_")[1])
-    stream = CURRENT_STREAMS.get(chat_id)
-    if not stream:
-        return await callback_query.answer("⚠️ No active stream here!", show_alert=True)
-    if stream["media_type"] == "channel":
-        return await callback_query.answer("⚠️ Can't seek a live channel!", show_alert=True)
-
-    elapsed = time.time() - stream["start_ts"]
-    new_offset = max(0, elapsed + delta)
-    quality = QUALITY_PRESETS.get(stream["quality"], VideoQuality.HD_720p)
-    try:
-        stream_obj = make_seek_stream(stream["url"], quality, new_offset)
-        await robust_play(chat_id, stream_obj)
-        stream["start_ts"] = time.time() - new_offset
-        stream["offset"] = new_offset
-        stream["token"] = uuid.uuid4().hex
-        caption = _render_stream_card(stream["name"], stream["type"], stream["quality"], new_offset, stream.get("duration"))
-        await callback_query.message.edit_caption(caption, parse_mode=ParseMode.HTML, reply_markup=_build_stream_keyboard())
-        await callback_query.answer(f"⏩ Seeked to {fmt_time(new_offset)}")
-        asyncio.create_task(_progress_loop(chat_id, stream["token"]))
-    except Exception as e:
-        await callback_query.answer(f"❌ Seek failed: {str(e)[:100]}", show_alert=True)
+@app.on_callback_query(filters.regex(r"^noop$"))
+async def noop_cb(client, callback_query):
+    await callback_query.answer()
 
 
 @app.on_message(filters.command("seek") & filters.group)
@@ -832,11 +944,11 @@ async def seek_command(client, message):
     chat_id = message.chat.id
     stream = CURRENT_STREAMS.get(chat_id)
     if not stream:
-        return await message.reply(f"{E_WARN} No active stream here!", parse_mode=ParseMode.HTML)
+        return await message.reply(quote(f"{E_WARN} No active stream here!"), parse_mode=ParseMode.HTML)
     if len(message.command) < 2:
-        return await message.reply(f"{E_WARN} Usage: <code>/seek mm:ss</code> or <code>/seek seconds</code>", parse_mode=ParseMode.HTML)
+        return await message.reply(quote(f"{E_WARN} Usage: <code>/seek mm:ss</code> or <code>/seek seconds</code>"), parse_mode=ParseMode.HTML)
     if stream["media_type"] == "channel":
-        return await message.reply("⚠️ Can't seek a live channel!")
+        return await message.reply(quote("⚠️ Can't seek a live channel!"), parse_mode=ParseMode.HTML)
 
     raw = message.command[1]
     try:
@@ -848,7 +960,12 @@ async def seek_command(client, message):
         else:
             secs = int(raw)
     except ValueError:
-        return await message.reply("❌ Invalid time format. Use mm:ss or seconds.")
+        return await message.reply(quote("❌ Invalid time format. Use mm:ss or seconds."), parse_mode=ParseMode.HTML)
+
+    try:
+        await message.delete()
+    except Exception:
+        pass
 
     quality = QUALITY_PRESETS.get(stream["quality"], VideoQuality.HD_720p)
     try:
@@ -857,15 +974,16 @@ async def seek_command(client, message):
         stream["start_ts"] = time.time() - secs
         stream["offset"] = secs
         stream["token"] = uuid.uuid4().hex
-        caption = _render_stream_card(stream["name"], stream["type"], stream["quality"], secs, stream.get("duration"))
+        keyboard = _build_stream_keyboard(secs, stream.get("duration"), stream["media_type"])
         try:
-            await app.edit_message_caption(chat_id, stream["msg_id"], caption, parse_mode=ParseMode.HTML, reply_markup=_build_stream_keyboard())
+            await app.edit_message_reply_markup(chat_id, stream["msg_id"], reply_markup=keyboard)
         except Exception:
-            await app.edit_message_text(chat_id, stream["msg_id"], caption, parse_mode=ParseMode.HTML, reply_markup=_build_stream_keyboard())
-        await message.reply(f"{E_CHECK} Jumped to <b>{fmt_time(secs)}</b>", parse_mode=ParseMode.HTML)
+            pass
+        confirm = await app.send_message(chat_id, quote(f"{E_CHECK} Jumped to <b>{fmt_time(secs)}</b>"), parse_mode=ParseMode.HTML)
+        asyncio.create_task(_delete_after(confirm, 5))
         asyncio.create_task(_progress_loop(chat_id, stream["token"]))
     except Exception as e:
-        await message.reply(f"❌ Seek failed: <code>{esc(str(e)[:120])}</code>", parse_mode=ParseMode.HTML)
+        await app.send_message(chat_id, quote(f"❌ Seek failed: <code>{esc(str(e)[:120])}</code>\n\nIf this keeps happening, the seek mechanism may need tuning to your exact py-tgcalls version — send me the error and I'll adjust it."), parse_mode=ParseMode.HTML)
 
 
 @app.on_callback_query(filters.regex(r"^q_"))
@@ -882,11 +1000,12 @@ async def switch_quality(client, callback_query):
         await robust_play(chat_id, stream_obj)
         stream["quality"] = quality_req
         stream["start_ts"] = time.time() - elapsed
-        caption = _render_stream_card(stream["name"], stream["type"], quality_req, elapsed, stream.get("duration"))
+        caption = _render_stream_card(stream["name"], stream["type"], quality_req)
+        keyboard = _build_stream_keyboard(elapsed, stream.get("duration"), stream["media_type"])
         try:
-            await callback_query.message.edit_caption(caption, parse_mode=ParseMode.HTML, reply_markup=_build_stream_keyboard())
+            await callback_query.message.edit_caption(caption, parse_mode=ParseMode.HTML, reply_markup=keyboard)
         except Exception:
-            await callback_query.message.edit_text(caption, parse_mode=ParseMode.HTML, reply_markup=_build_stream_keyboard())
+            await callback_query.message.edit_text(caption, parse_mode=ParseMode.HTML, reply_markup=keyboard)
         await callback_query.answer(f"✅ Switched to {quality_req}!")
     except Exception:
         await callback_query.answer("❌ Failed to switch!", show_alert=True)
@@ -894,6 +1013,8 @@ async def switch_quality(client, callback_query):
 
 @app.on_callback_query(filters.regex(r"^stop_stream$"))
 async def stop_stream_btn(client, callback_query):
+    if not await is_admin_or_owner(client, callback_query.message.chat.id, callback_query.from_user.id):
+        return await callback_query.answer("🚫 Only group admins can stop the stream.", show_alert=True)
     await _do_stop(callback_query.message.chat.id)
     await callback_query.answer("⏹ Stopped")
     try:
@@ -917,32 +1038,53 @@ async def _do_stop(chat_id):
 
 @app.on_message(filters.command("stopvc") & filters.group)
 async def stop_vc(client, message):
+    if not await is_admin_or_owner(client, message.chat.id, message.from_user.id):
+        return await message.reply(quote(f"{E_DENY} Only group admins can stop the current stream."), parse_mode=ParseMode.HTML, disable_web_page_preview=True)
     had_stream = message.chat.id in CURRENT_STREAMS
     await _do_stop(message.chat.id)
     if had_stream:
-        await message.reply(f"{E_STOP} <b>Stream Stopped.</b>{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+        await message.reply(quote(f"{E_STOP} <b>Stream Stopped.</b>") + CREDITS, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
     else:
-        await message.reply(f"❌ <b>No active stream to stop.</b>{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+        await message.reply(quote(f"❌ <b>No active stream to stop.</b>") + CREDITS, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
 
 
 # ================= Health check / stuck-stream watchdog =================
+_watchdog_fail_counts = {}  # chat_id -> consecutive failed checks
+WATCHDOG_FAILS_BEFORE_RESTART = 3  # ~3 checks (3 min at 60s interval) of confirmed failure before we touch a live stream
+
+
 async def stream_watchdog():
-    """Periodically pings active calls; if a call has silently died, try to auto-restart it."""
+    """
+    Periodically checks active calls. Only restarts a stream after several
+    CONSECUTIVE failed checks in a row — a single flaky check is not treated
+    as proof the call died, to avoid falsely restarting healthy streams
+    (which was likely the cause of streams "randomly restarting").
+    """
+    if not hasattr(call_py, "get_call"):
+        print("⚠️ Watchdog disabled: this py-tgcalls build has no get_call() — liveness can't be verified this way. Tell me what version you have and I'll adjust.")
+        return
+
     while True:
         await asyncio.sleep(60)
         for chat_id, stream in list(CURRENT_STREAMS.items()):
             try:
                 await call_py.get_call(chat_id)
-            except Exception:
-                # Call appears dead — attempt one auto-restart.
+                _watchdog_fail_counts[chat_id] = 0  # healthy — reset
+            except Exception as e:
+                fails = _watchdog_fail_counts.get(chat_id, 0) + 1
+                _watchdog_fail_counts[chat_id] = fails
+                print(f"⚠️ Watchdog check {fails}/{WATCHDOG_FAILS_BEFORE_RESTART} failed for {chat_id}: {e}")
+                if fails < WATCHDOG_FAILS_BEFORE_RESTART:
+                    continue
+                _watchdog_fail_counts[chat_id] = 0
                 try:
                     elapsed = time.time() - stream["start_ts"]
                     quality = QUALITY_PRESETS.get(stream["quality"], VideoQuality.HD_720p)
                     stream_obj = make_seek_stream(stream["url"], quality, elapsed if stream["media_type"] != "channel" else 0)
                     await robust_play(chat_id, stream_obj, retries=2)
-                    print(f"🔄 Auto-recovered stuck stream in {chat_id}")
-                except Exception as e:
-                    print(f"❌ Could not auto-recover stream in {chat_id}: {e}")
+                    print(f"🔄 Auto-recovered stream in {chat_id} after {WATCHDOG_FAILS_BEFORE_RESTART} confirmed failed checks")
+                except Exception as e2:
+                    print(f"❌ Could not auto-recover stream in {chat_id}: {e2}")
                     CURRENT_STREAMS.pop(chat_id, None)
 
 
@@ -952,8 +1094,8 @@ async def send_start_banner(client, chat_id, caption, reply_markup):
     try:
         if _start_banner_file_id:
             sent = await client.send_photo(chat_id, _start_banner_file_id, caption=caption, parse_mode=ParseMode.HTML, reply_markup=reply_markup)
-        elif os.path.exists(START_BANNER_PATH):
-            sent = await client.send_photo(chat_id, START_BANNER_PATH, caption=caption, parse_mode=ParseMode.HTML, reply_markup=reply_markup)
+        elif START_BANNER_URL:
+            sent = await client.send_photo(chat_id, START_BANNER_URL, caption=caption, parse_mode=ParseMode.HTML, reply_markup=reply_markup)
             _start_banner_file_id = sent.photo.file_id
             save_data()
         else:
@@ -967,34 +1109,45 @@ async def send_start_banner(client, chat_id, caption, reply_markup):
 def _start_keyboard():
     add_url = f"https://t.me/{BOT_USERNAME}?startgroup=true" if BOT_USERNAME else SUPPORT_URL
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton(f"➕ Add Me", url=add_url), InlineKeyboardButton("👑 Support", url=SUPPORT_URL)],
-        [InlineKeyboardButton("🔔 Updates", url=UPDATES_URL)],
+        [btn("➕ Add Me", url=add_url, color="success"), btn("👑 Support", url=SUPPORT_URL, color="primary")],
+        [btn("🔔 Updates", url=UPDATES_URL, color="primary")],
+        [btn("📜 Commands", callback_data="show_commands", color="primary")],
     ])
+
+
+COMMANDS_TEXT = quote(
+    f"{E_BOLT} <b>{fancy('commands')}</b>\n\n"
+    f"❖ <code>/channels</code> — Browse Live TV\n"
+    f"❖ <code>/movies</code> — Browse Movies\n"
+    f"❖ <code>/series</code> — Browse Series\n"
+    f"❖ <code>/livetv name</code> — Play Channel\n"
+    f"❖ <code>/playmovie name</code> — Play Movie\n"
+    f"❖ <code>/playseries name - s01e01</code> — Play Series\n"
+    f"❖ <code>/seek mm:ss</code> — Jump to a timestamp\n"
+    f"❖ <code>/stopvc</code> — Stop Current Stream (admins only)"
+) + CREDITS
+
+
+@app.on_callback_query(filters.regex(r"^show_commands$"))
+async def show_commands_cb(client, callback_query):
+    await callback_query.answer()
+    await client.send_message(callback_query.message.chat.id, COMMANDS_TEXT, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
 
 
 @app.on_message(filters.command("start") & filters.private)
 async def start_cmd(client, message):
-    text = (
+    text = quote(
         f"{E_SPARK} <b>Welcome to {fancy('meow stream')} 📺</b> — the most advanced Telegram streaming bot.\n\n"
         f"{E_CAM} Live TV, Movies & Series, streamed straight into your group's voice chat.\n"
         f"{E_SIGNAL} Multiple quality options, seek/resume, auto-recovery on drops.\n\n"
-        f"╭━━━[ {E_BOLT} <b>{fancy('commands')}</b> ]━━━╮\n"
-        f"┃ ❖ <code>/channels</code> — Browse Live TV\n"
-        f"┃ ❖ <code>/movies</code> — Browse Movies\n"
-        f"┃ ❖ <code>/series</code> — Browse Series\n"
-        f"┃ ❖ <code>/livetv name</code> — Play Channel\n"
-        f"┃ ❖ <code>/playmovie name</code> — Play Movie\n"
-        f"┃ ❖ <code>/playseries name - s01e01</code> — Play Series\n"
-        f"┃ ❖ <code>/seek mm:ss</code> — Jump to a timestamp\n"
-        f"┃ ❖ <code>/stopvc</code> — Stop Current Stream\n"
-        f"╰━━━━━━━━━━━━━━━━━╯{CREDITS}"
-    )
+        f"Tap <b>📜 Commands</b> below to see everything I can do."
+    ) + CREDITS
     await send_start_banner(client, message.chat.id, text, _start_keyboard())
 
 
 @app.on_message(filters.command("start") & filters.group)
 async def start_cmd_group(client, message):
-    text = f"{E_SPARK} <b>{fancy('meow stream')} 📺 is ready!</b>\nUse <code>/channels</code>, <code>/movies</code>, or <code>/series</code> to get started.{CREDITS}"
+    text = quote(f"{E_SPARK} <b>{fancy('meow stream')} 📺 is ready!</b>\nTap <b>📜 Commands</b> below to get started.") + CREDITS
     await send_start_banner(client, message.chat.id, text, _start_keyboard())
 
 
@@ -1051,16 +1204,15 @@ async def unapprove_group(client, message):
 
 @app.on_message(filters.command("botinfo") & filters.user(OWNER_ID))
 async def bot_info(client, message):
-    text = (f"╭━━━[ {E_SIGNAL} <b>{fancy('SYSTEM INFO')}</b> ]━━━╮\n┃\n"
-            f"┃ 📡 <b>Active Streams:</b> {len(CURRENT_STREAMS)}\n"
-            f"┃ 📺 <b>Channels:</b> {len(CHANNELS)} | 🎬 <b>Movies:</b> {len(MOVIES)}\n"
-            f"┃ 🍿 <b>Series:</b> {len(SERIES)}\n"
-            f"┃ 🖼️ <b>Channel Logos:</b> {len(CHANNEL_LOGOS)}\n"
-            f"┃ 🛡️ <b>Approved Groups:</b> {len(APPROVED_GROUPS)}\n")
+    body = (f"{E_SIGNAL} <b>{fancy('system info')}</b>\n\n"
+            f"📡 <b>Active Streams:</b> {len(CURRENT_STREAMS)}\n"
+            f"📺 <b>Channels:</b> {len(CHANNELS)} | 🎬 <b>Movies:</b> {len(MOVIES)}\n"
+            f"🍿 <b>Series:</b> {len(SERIES)}\n"
+            f"🖼️ <b>Channel Logos:</b> {len(CHANNEL_LOGOS)}\n"
+            f"🛡️ <b>Approved Groups:</b> {len(APPROVED_GROUPS)}\n")
     for grp in APPROVED_GROUPS:
-        text += f"┃ ├ <code>{grp}</code>\n"
-    text += f"┃\n╰━━━━━━━━━━━━━━━━━╯{CREDITS}"
-    await message.reply(text, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+        body += f"├ <code>{grp}</code>\n"
+    await message.reply(quote(body) + CREDITS, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
 
 
 @app.on_message(filters.command("broadcast") & filters.user(OWNER_ID))
