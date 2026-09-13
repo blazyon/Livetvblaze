@@ -68,7 +68,6 @@ LIST_FILE_THRESHOLD = 100
 MUSIC_QUEUES = {}           # chat_id -> [track dicts]
 MUSIC_NOW = {}              # chat_id -> currently playing track dict, or absent if idle
 MUSIC_PAUSED = set()        # chat_ids currently paused
-MUSIC_LOOP = set()          # chat_ids with "repeat current track" enabled
 BOT_SENT_MSGS = {}          # chat_id -> [message_ids...] the bot has sent in that chat
 
 QUALITY_PRESETS = {
@@ -122,26 +121,6 @@ _FANCY = {
 
 def fancy(text: str) -> str:
     return "".join(_FANCY.get(c.lower(), c) for c in text)
-
-
-def fancy_title(text: str) -> str:
-    """Card-style small caps: first letter of every word stays a normal
-    capital, the rest of the word is rendered in the small-caps glyphs from
-    `fancy()` — e.g. 'started streaming' -> 'Sᴛᴀʀᴛᴇᴅ Sᴛʀᴇᴀᴍɪɴɢ'."""
-    return " ".join((w[0].upper() + fancy(w[1:].lower())) if w else w for w in text.split(" "))
-
-
-def card_field(icon: str, label: str, value) -> str:
-    """One '<icon> Label: value' line used by every stylised card."""
-    return f"{icon} <b>{fancy_title(label)}:</b> {value}"
-
-
-def card(header_icon: str, header_text: str, *lines: str) -> str:
-    """Build a stylised card: header line, blank line, field lines — wrapped
-    in a blockquote with the bot's credit footer, matching the bot-wide
-    'Sᴍᴀʟʟ Cᴀᴘs' card design."""
-    body = f"{header_icon} <b>{fancy_title(header_text)}</b>\n\n" + "\n".join(lines)
-    return quote(body) + CREDITS
 
 
 BOT_NAME = f"{fancy('meow stream')} 📺"
@@ -453,16 +432,13 @@ async def is_admin_or_owner(client, chat_id, user_id):
 
 
 def check_approval(func):
-    """Gate for group-only commands that require the group to be authorised.
-    Used for Live TV / Movies / Series playback — NOT for music, which is
-    open to any group."""
     async def wrapper(client, message):
         is_group = message.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]
         is_approved = message.chat.id in APPROVED_GROUPS
         is_owner = message.from_user.id == OWNER_ID
         if is_group and not is_approved and not is_owner:
             return await message.reply(
-                quote(f"{E_DENY} <b>ACCESS DENIED</b>\nThis Group (<code>{message.chat.id}</code>) is not authorized to play Live TV / Movies / Series.\nAsk the bot owner to run <code>/approve</code> here.") + CREDITS,
+                quote(f"{E_DENY} <b>ACCESS DENIED</b>\nThis Group (<code>{message.chat.id}</code>) is not authorized.") + CREDITS,
                 parse_mode=ParseMode.HTML, disable_web_page_preview=True,
             )
         return await func(client, message)
@@ -500,47 +476,34 @@ _FFMPEG_KWARG_CANDIDATES = ("additional_ffmpeg_parameters", "ffmpeg_parameters",
 
 def build_media_stream(url, quality, offset_seconds=0, media_type="movie"):
     """
-    Build a MediaStream that plays reliably regardless of container/format
-    (.mp4, .mkv, .avi, .ts, .flv, .m3u8, ...) or how the file is hosted.
-
-    - Reconnect flags apply to every stream (not just live channels) since a
-      direct movie/series file link can drop mid-transfer just like a live
-      one, and previously only channels got these.
-    - A larger probesize/analyzeduration lets ffmpeg fully identify formats
-      that store their index/track info later in the file or take longer to
-      sniff (MKV in particular) — the previous defaults were too small for
-      some hosts and made the stream fail to start silently.
-    - genpts + discardcorrupt papers over missing/broken timestamps, which
-      is common in loosely-muxed MKV/AVI rips and otherwise causes playback
-      to stall or refuse to start.
-    - audio_parameters is now always set (movies/series previously only set
-      video_parameters), so an unusual audio codec doesn't get dropped.
+    Build a MediaStream. For live channels, adds ffmpeg auto-reconnect flags
+    (this is effectively what manually switching quality was doing — forcing
+    a fresh, reconnecting pull from the source — so the bot now does it by
+    itself instead of needing a manual quality switch). Also applies a
+    start-time offset for seeking on movies/series.
 
     Different py-tgcalls releases use different kwarg names for raw ffmpeg
     args, so we try the known candidates in order and use whichever the
     installed version actually accepts (TypeError on an unknown kwarg is
     raised immediately at construction time, so this is safe to try).
     """
-    ffmpeg_parts = [
-        "-reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 5",
-        "-probesize 20000000 -analyzeduration 20000000",
-        "-fflags +genpts+discardcorrupt",
-    ]
+    ffmpeg_parts = []
+    if media_type == "channel":
+        ffmpeg_parts.append("-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5")
     if offset_seconds and offset_seconds > 0:
         ffmpeg_parts.append(f"-ss {int(offset_seconds)}")
-    ffmpeg_arg = " ".join(ffmpeg_parts)
 
+    if not ffmpeg_parts:
+        return MediaStream(url, video_parameters=quality)
+
+    ffmpeg_arg = " ".join(ffmpeg_parts)
     for kwarg_name in _FFMPEG_KWARG_CANDIDATES:
         try:
-            return MediaStream(url, video_parameters=quality, audio_parameters=AudioQuality.HIGH, **{kwarg_name: ffmpeg_arg})
+            return MediaStream(url, video_parameters=quality, **{kwarg_name: ffmpeg_arg})
         except TypeError:
             continue
-
-    print("⚠️ No known ffmpeg kwarg accepted by this py-tgcalls build — reconnect/probesize flags won't apply until this is verified against your installed version.")
-    try:
-        return MediaStream(url, video_parameters=quality, audio_parameters=AudioQuality.HIGH)
-    except TypeError:
-        return MediaStream(url, video_parameters=quality)
+    print("⚠️ No known ffmpeg kwarg accepted by this py-tgcalls build — reconnect flags/seeking won't apply until this is verified against your installed version.")
+    return MediaStream(url, video_parameters=quality)
 
 
 def _track_msg(chat_id, msg):
@@ -589,7 +552,6 @@ def _clear_music_state(chat_id):
     MUSIC_QUEUES.pop(chat_id, None)
     MUSIC_NOW.pop(chat_id, None)
     MUSIC_PAUSED.discard(chat_id)
-    MUSIC_LOOP.discard(chat_id)
 
 
 def _ytdl_search_sync(query: str):
@@ -652,95 +614,24 @@ async def yt_download(video_id: str, video: bool = False):
     return await asyncio.to_thread(_ytdl_download_sync, video_id, video)
 
 
-def _music_elapsed(track):
-    """Seconds played so far, freezing while paused and skipping the paused span."""
-    if not track.get("start_ts"):
-        return 0
-    end_ref = track.get("paused_since") or time.time()
-    return max(0, end_ref - track["start_ts"] - track.get("pause_accum", 0))
-
-
-def _progress_bar_line(elapsed, duration, segments=10):
-    elapsed = max(0, int(elapsed))
-    if duration:
-        pos = min(segments, int(round(min(elapsed / duration, 1) * segments)))
-        remaining = f"-{fmt_time(max(duration - elapsed, 0))}"
-    else:
-        pos, remaining = 0, "Live"
-    bar = ("─" * pos) + "●" + ("─" * (segments - pos))
-    return f"{fmt_time(elapsed)} | {bar} | {remaining}"
-
-
-def _music_keyboard(chat_id, elapsed=0, duration=None, paused=False, loop=False):
+def _music_keyboard(chat_id, paused=False):
     return InlineKeyboardMarkup([
-        [btn(_progress_bar_line(elapsed, duration), callback_data="noop")],
         [
-            btn("▶️", callback_data=f"music_play_{chat_id}", color="primary"),
-            btn("⏸️", callback_data=f"music_pause_{chat_id}", color="primary"),
-            btn("🔂" if loop else "🔁", callback_data=f"music_loop_{chat_id}", color=("success" if loop else "primary")),
-            btn("⏭️", callback_data=f"music_skip_{chat_id}", color="primary"),
-            btn("⏹️", callback_data=f"music_stop_{chat_id}", color="danger"),
+            btn("▶️ Resume" if paused else "⏸ Pause", callback_data=f"music_toggle_{chat_id}", color="primary"),
+            btn("⏭ Skip", callback_data=f"music_skip_{chat_id}", color="primary"),
         ],
+        [btn("⏹ Stop", callback_data=f"music_stop_{chat_id}", color="danger")],
     ])
-
-
-async def _refresh_music_keyboard(chat_id, message=None):
-    track = MUSIC_NOW.get(chat_id)
-    if not track:
-        return
-    kb = _music_keyboard(
-        chat_id, _music_elapsed(track), track.get("duration"),
-        paused=chat_id in MUSIC_PAUSED, loop=chat_id in MUSIC_LOOP,
-    )
-    try:
-        if message:
-            await message.edit_reply_markup(kb)
-        elif track.get("msg_id"):
-            await app.edit_message_reply_markup(chat_id, track["msg_id"], reply_markup=kb)
-    except Exception:
-        pass
-
-
-async def _music_do_pause(chat_id):
-    await call_py.pause(chat_id)
-    track = MUSIC_NOW.get(chat_id)
-    if track and not track.get("paused_since"):
-        track["paused_since"] = time.time()
-    MUSIC_PAUSED.add(chat_id)
-
-
-async def _music_do_resume(chat_id):
-    await call_py.resume(chat_id)
-    track = MUSIC_NOW.get(chat_id)
-    if track and track.get("paused_since"):
-        track["pause_accum"] = track.get("pause_accum", 0) + (time.time() - track["paused_since"])
-        track["paused_since"] = None
-    MUSIC_PAUSED.discard(chat_id)
-
-
-async def _music_progress_loop(chat_id, token):
-    """Periodically refreshes the elapsed/remaining progress-bar button."""
-    while True:
-        await asyncio.sleep(15)
-        track = MUSIC_NOW.get(chat_id)
-        if not track or track.get("token") != token:
-            return
-        elapsed = _music_elapsed(track)
-        if track.get("duration") and elapsed >= track["duration"]:
-            return
-        await _refresh_music_keyboard(chat_id)
 
 
 def _music_card_text(track):
     dur = fmt_time(track["duration"]) if track.get("duration") else "Live/Unknown"
-    lines = [
-        card_field("✨", "title", esc(track["title"])),
-        card_field("⏱", "duration", f"{dur} {fancy('minutes')}"),
-        card_field("🥀", "requested by", esc(track.get("requester", "someone"))),
-    ]
-    if track.get("video"):
-        lines.append(card_field(E_CAM, "type", "Video"))
-    return card("➻", "started streaming", *lines)
+    kind = "Video" if track.get("video") else "Audio"
+    return quote(
+        f"{E_FIRE} <b>Now Playing ({kind})</b>\n\n"
+        f"🎵 <b>{esc(track['title'])}</b>\n"
+        f"⏱ {dur}  |  🙋 {esc(track.get('requester', 'someone'))}"
+    ) + CREDITS
 
 
 async def _play_music_track(chat_id, track, status_msg=None):
@@ -772,43 +663,19 @@ async def _play_music_track(chat_id, track, status_msg=None):
                 pass
         return await _music_play_next(chat_id)
 
-    track["start_ts"] = time.time()
-    track["pause_accum"] = 0
-    track["paused_since"] = None
-    track["token"] = uuid.uuid4().hex
-    track["msg_id"] = None
     MUSIC_NOW[chat_id] = track
     MUSIC_PAUSED.discard(chat_id)
     text = _music_card_text(track)
-    kb = _music_keyboard(chat_id, 0, track.get("duration"), loop=chat_id in MUSIC_LOOP)
-
-    sent = None
-    thumb = track.get("thumbnail")
-    if thumb:
-        try:
-            sent = await app.send_photo(chat_id, thumb, caption=text, parse_mode=ParseMode.HTML, reply_markup=kb)
-        except Exception:
-            sent = None  # bad/expired thumbnail URL — fall back to a text card below
-
-    if sent and status_msg:
-        try:
-            await status_msg.delete()
-        except Exception:
-            pass
-
-    if not sent and status_msg:
+    kb = _music_keyboard(chat_id)
+    if status_msg:
         try:
             await status_msg.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=kb, disable_web_page_preview=True)
-            sent = status_msg
+            _track_msg(chat_id, status_msg)
+            return
         except Exception:
-            sent = None
-
-    if not sent:
-        sent = await app.send_message(chat_id, text, parse_mode=ParseMode.HTML, reply_markup=kb, disable_web_page_preview=True)
-
-    track["msg_id"] = sent.id
+            pass
+    sent = await app.send_message(chat_id, text, parse_mode=ParseMode.HTML, reply_markup=kb, disable_web_page_preview=True)
     _track_msg(chat_id, sent)
-    asyncio.create_task(_music_progress_loop(chat_id, track["token"]))
 
 
 async def _music_play_next(chat_id):
@@ -825,6 +692,7 @@ async def _music_play_next(chat_id):
 
 
 @app.on_message(filters.command(["play", "vplay"]) & filters.group)
+@check_approval
 async def play_music(client, message):
     cmd = message.command[0]
     is_video = cmd == "vplay"
@@ -857,14 +725,7 @@ async def play_music(client, message):
 
     if chat_id in MUSIC_NOW:
         queue.append(track)
-        dur = fmt_time(track["duration"]) if track.get("duration") else "Live/Unknown"
-        text = card(
-            "➲", f"added to queue at #{len(queue)}",
-            card_field("✨", "title", esc(track["title"])),
-            card_field("⏱", "duration", f"{dur} {fancy('minutes')}"),
-            card_field("🥀", "requested by", esc(track.get("requester", "someone"))),
-        )
-        return await msg.edit_text(text, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+        return await msg.edit_text(quote(f"{E_CHECK} <b>Queued (#{len(queue)}):</b> {esc(track['title'])}") + CREDITS, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
 
     await _wipe_chat_bot_messages(client, chat_id)
     await _play_music_track(chat_id, track, status_msg=msg)
@@ -889,8 +750,8 @@ async def pause_music(client, message):
     if not await is_admin_or_owner(client, chat_id, message.from_user.id):
         return await message.reply(quote(f"{E_DENY} Only group admins can pause.") + CREDITS, parse_mode=ParseMode.HTML)
     try:
-        await _music_do_pause(chat_id)
-        await _refresh_music_keyboard(chat_id)
+        await call_py.pause(chat_id)
+        MUSIC_PAUSED.add(chat_id)
         await message.reply(quote(f"⏸ <b>Paused.</b>") + CREDITS, parse_mode=ParseMode.HTML)
     except Exception as e:
         await message.reply(quote(f"❌ <b>Couldn't pause:</b> <code>{esc(str(e)[:120])}</code>") + CREDITS, parse_mode=ParseMode.HTML)
@@ -904,8 +765,8 @@ async def resume_music(client, message):
     if not await is_admin_or_owner(client, chat_id, message.from_user.id):
         return await message.reply(quote(f"{E_DENY} Only group admins can resume.") + CREDITS, parse_mode=ParseMode.HTML)
     try:
-        await _music_do_resume(chat_id)
-        await _refresh_music_keyboard(chat_id)
+        await call_py.resume(chat_id)
+        MUSIC_PAUSED.discard(chat_id)
         await message.reply(quote(f"▶️ <b>Resumed.</b>") + CREDITS, parse_mode=ParseMode.HTML)
     except Exception as e:
         await message.reply(quote(f"❌ <b>Couldn't resume:</b> <code>{esc(str(e)[:120])}</code>") + CREDITS, parse_mode=ParseMode.HTML)
@@ -941,48 +802,26 @@ async def show_queue(client, message):
     await message.reply(quote(body) + CREDITS, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
 
 
-@app.on_callback_query(filters.regex(r"^music_play_(-?\d+)$"))
-async def music_play_cb(client, callback_query):
+@app.on_callback_query(filters.regex(r"^music_toggle_(-?\d+)$"))
+async def music_toggle_cb(client, callback_query):
     chat_id = int(callback_query.matches[0].group(1))
     if not await is_admin_or_owner(client, chat_id, callback_query.from_user.id):
         return await callback_query.answer("🚫 Only group admins can do that.", show_alert=True)
-    if chat_id not in MUSIC_PAUSED:
-        return await callback_query.answer("▶️ Already playing.")
     try:
-        await _music_do_resume(chat_id)
-        await callback_query.answer("▶️ Resumed")
-        await _refresh_music_keyboard(chat_id, callback_query.message)
+        if chat_id in MUSIC_PAUSED:
+            await call_py.resume(chat_id)
+            MUSIC_PAUSED.discard(chat_id)
+            await callback_query.answer("▶️ Resumed")
+        else:
+            await call_py.pause(chat_id)
+            MUSIC_PAUSED.add(chat_id)
+            await callback_query.answer("⏸ Paused")
+        try:
+            await callback_query.message.edit_reply_markup(_music_keyboard(chat_id, paused=chat_id in MUSIC_PAUSED))
+        except Exception:
+            pass
     except Exception as e:
         await callback_query.answer(f"Failed: {str(e)[:100]}", show_alert=True)
-
-
-@app.on_callback_query(filters.regex(r"^music_pause_(-?\d+)$"))
-async def music_pause_cb(client, callback_query):
-    chat_id = int(callback_query.matches[0].group(1))
-    if not await is_admin_or_owner(client, chat_id, callback_query.from_user.id):
-        return await callback_query.answer("🚫 Only group admins can do that.", show_alert=True)
-    if chat_id in MUSIC_PAUSED:
-        return await callback_query.answer("⏸ Already paused.")
-    try:
-        await _music_do_pause(chat_id)
-        await callback_query.answer("⏸ Paused")
-        await _refresh_music_keyboard(chat_id, callback_query.message)
-    except Exception as e:
-        await callback_query.answer(f"Failed: {str(e)[:100]}", show_alert=True)
-
-
-@app.on_callback_query(filters.regex(r"^music_loop_(-?\d+)$"))
-async def music_loop_cb(client, callback_query):
-    chat_id = int(callback_query.matches[0].group(1))
-    if not await is_admin_or_owner(client, chat_id, callback_query.from_user.id):
-        return await callback_query.answer("🚫 Only group admins can do that.", show_alert=True)
-    if chat_id in MUSIC_LOOP:
-        MUSIC_LOOP.discard(chat_id)
-        await callback_query.answer("🔁 Loop off — will move to the next track.")
-    else:
-        MUSIC_LOOP.add(chat_id)
-        await callback_query.answer("🔂 Loop on — will repeat this track.")
-    await _refresh_music_keyboard(chat_id, callback_query.message)
 
 
 @app.on_callback_query(filters.regex(r"^music_skip_(-?\d+)$"))
@@ -1019,10 +858,7 @@ async def _on_call_update(_, update):
     if chat_id is None:
         return
     if isinstance(update, StreamEnded) and chat_id in MUSIC_NOW:
-        if chat_id in MUSIC_LOOP:
-            await _play_music_track(chat_id, MUSIC_NOW[chat_id])
-        else:
-            await _music_play_next(chat_id)
+        await _music_play_next(chat_id)
     elif isinstance(update, ChatUpdate) and str(getattr(update, "status", "")).split(".")[-1] in (
         "KICKED", "LEFT_GROUP", "CLOSED_VOICE_CHAT",
     ):
@@ -1506,12 +1342,12 @@ async def _delete_after(message, delay_seconds):
 
 
 def _render_stream_card(display_name, type_label, quality):
-    return card(
-        E_SPARK, "now streaming",
-        card_field(E_CAM, "title", esc(display_name)),
-        card_field("📡", "type", type_label),
-        card_field(E_SIGNAL, "quality", f"{quality} {E_CHECK}"),
-    )
+    return quote(
+        f"{E_SPARK} <b>{fancy('now streaming')}</b>\n\n"
+        f"❖ <b>Title:</b> {esc(display_name)}\n"
+        f"❖ <b>Type:</b> {type_label}\n"
+        f"❖ <b>Quality:</b> {quality} {E_CHECK}"
+    ) + CREDITS
 
 
 def _build_stream_keyboard(elapsed, duration, media_type):
@@ -1862,7 +1698,7 @@ async def approve_group(client, message):
         chat_id = int(message.command[1]) if len(message.command) > 1 else message.chat.id
         APPROVED_GROUPS.add(chat_id)
         save_data()
-        await message.reply(f"{E_CHECK} <b>Group <code>{chat_id}</code> APPROVED for Live TV / Movies / Series.</b>{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+        await message.reply(f"{E_CHECK} <b>Group <code>{chat_id}</code> APPROVED.</b>{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
     except (ValueError, IndexError):
         await message.reply("Please specify a Chat ID or use in the group.")
 
@@ -1873,7 +1709,7 @@ async def unapprove_group(client, message):
         chat_id = int(message.command[1]) if len(message.command) > 1 else message.chat.id
         APPROVED_GROUPS.discard(chat_id)
         save_data()
-        await message.reply(f"{E_DENY} <b>Group <code>{chat_id}</code> UNAPPROVED for Live TV / Movies / Series.</b>{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+        await message.reply(f"{E_DENY} <b>Group <code>{chat_id}</code> UNAPPROVED.</b>{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
     except (ValueError, IndexError):
         pass
 
