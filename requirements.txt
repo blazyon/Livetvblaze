@@ -5,4 +5,5 @@ aiohttp
 flask
 gunicorn
 Pillow
+python-dotenv
 yt-dlp
