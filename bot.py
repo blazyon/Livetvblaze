@@ -139,7 +139,7 @@ def pe(emoji_id, fallback):
     return f"<emoji id={emoji_id}>{fallback}</emoji>"
 
 E_CHECK = pe("5084979757905347540", "✅")
-E_FIRE = pe("5116414868357907335", "🔥")
+E_FIRE = pe("6086714986309097798", "🔥")   # confirmed against en.json
 E_BOLT = pe("5085022089103016925", "⚡️")
 E_STAR = pe("5116163917713769254", "⭐️")
 E_STOP = pe("5134537521518085000", "⏹")
@@ -148,13 +148,24 @@ E_DOWN = pe("5116204921766544244", "⏬")
 E_DENY = pe("5116151848855667552", "🚫")
 E_WARN = pe("4915853119839011973", "⚠️")
 E_PIN = pe("5107195471948940313", "📍")
-E_SPARK = pe("5104960787579929462", "✨")
+E_SPARK = pe("6269085886177087845", "✨")  # confirmed against en.json
+E_SPARK2 = pe("6113685078825505075", "✨")  # confirmed against en.json (alt id)
 E_CAM = pe("5118744200921219799", "🎥")
 E_CAT = pe("5123237479742178762", "🐈")
 E_SIGNAL = pe("5121007227779416740", "📶")
 E_BELL = pe("4915820259044230152", "🔔")
 E_NEW = pe("4918438965029110683", "🆕")
 E_LINK = pe("4916086774649848789", "🔗")
+E_NOTE = pe("5972072533833289156", "🎶")   # confirmed against en.json
+E_MOON = pe("6089165857856952184", "🌙")   # confirmed against en.json
+E_TIME = pe("5408910404732595664", "⏱")    # confirmed against en.json — text use only, NOT buttons (see note below)
+
+# NOTE: Telegram inline keyboard buttons can only render plain literal text —
+# the Bot API has no support for custom-emoji entities inside button labels,
+# only inside message text. So button labels below intentionally stay plain
+# unicode emoji (⏹, ▶️, 👑, etc.) — that's a Telegram platform limit, not
+# something either bot's code controls. Premium emoji apply to message
+# text/captions only, which is everywhere below that isn't a btn(...) call.
 
 # ================= Stylized font (small caps, as provided) =================
 _FANCY = {
@@ -262,7 +273,7 @@ async def fetch_tmdb_art(title: str, media_type: str):
     then just the first couple of words, so partial/messy titles still match.
     """
     if not TMDB_API_KEY:
-        print("⚠️ fetch_tmdb_art: TMDB_API_KEY is empty — skipping. Set it in Railway's Variables tab to enable banners.")
+        print("⚠️ fetch_tmdb_art: TMDB_API_KEY is empty — skipping. Paste your key into the TMDB_API_KEY line near the top of bot.py to enable banners.")
         return None
     cache_key = f"{media_type}:{title}"
     if cache_key in TMDB_CACHE:
@@ -387,7 +398,11 @@ async def compose_banner(backdrop_url, logo_url):
 
 # ================= Music (YouTube via yt-dlp) =================
 def _ytdlp_extract_sync(query):
-    ydl_opts = {
+    # "The page needs to be reloaded" is YouTube's web-client extraction breaking —
+    # forcing yt-dlp to use the android/tv internal clients instead of web works
+    # around this specific error, since those clients get a different (currently
+    # working) response format from YouTube.
+    base_opts = {
         "format": "bestaudio/best",
         "noplaylist": True,
         "quiet": True,
@@ -396,12 +411,25 @@ def _ytdlp_extract_sync(query):
         "skip_download": True,
     }
     if os.path.exists(YOUTUBE_COOKIES_PATH):
-        ydl_opts["cookiefile"] = YOUTUBE_COOKIES_PATH
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(query, download=False)
-        if info and "entries" in info and info["entries"]:
-            info = info["entries"][0]
-        return info
+        base_opts["cookiefile"] = YOUTUBE_COOKIES_PATH
+
+    last_err = None
+    for client_combo in (["android", "web"], ["tv"], ["web"]):
+        opts = dict(base_opts)
+        opts["extractor_args"] = {"youtube": {"player_client": client_combo}}
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(query, download=False)
+                if info and "entries" in info and info["entries"]:
+                    info = info["entries"][0]
+                if info and info.get("url"):
+                    return info
+        except Exception as e:
+            last_err = e
+            continue
+    if last_err:
+        raise last_err
+    return None
 
 
 async def extract_track(query):
@@ -1448,7 +1476,7 @@ async def _launch_music(client, chat_id, track, message=None):
 
     token = uuid.uuid4().hex
     CURRENT_STREAMS[chat_id] = {
-        "url": track["stream_url"], "name": track["title"], "type": "🎵 Music", "media_type": "music",
+        "url": track["stream_url"], "name": track["title"], "type": f"{E_NOTE} Music", "media_type": "music",
         "key": "", "quality": "audio", "start_ts": time.time(), "offset": 0,
         "duration": track.get("duration") or None, "token": token, "msg_id": None,
         "paused": False, "pause_ts": None,
@@ -1910,7 +1938,7 @@ async def tmdb_status(client, message):
     """Diagnostic: tests whether TMDB_API_KEY works and shows exactly what the bot would fetch for a title."""
     query = " ".join(message.command[1:]).strip() or "Inception"
     if not TMDB_API_KEY:
-        return await message.reply(quote(f"{E_WARN} <b>{fancy('tmdb api key is not set')}.</b>\n{fancy('set it in the railway variables tab, then redeploy')}.") + CREDITS, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+        return await message.reply(quote(f"{E_WARN} <b>{fancy('tmdb api key is not set')}.</b>\n{fancy('paste your key into the tmdb_api_key line near the top of bot.py, then redeploy')}.") + CREDITS, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
 
     msg = await message.reply(quote(f"{E_BOLT} {fancy('testing tmdb with')} <b>{esc(query)}</b>...") + CREDITS, parse_mode=ParseMode.HTML)
     result = await fetch_tmdb_art(query, "movie")
@@ -2018,17 +2046,17 @@ async def bot_info(client, message):
 @app.on_message(filters.command("broadcast") & filters.user(OWNER_ID))
 async def broadcast(client, message):
     if len(message.command) < 2:
-        return await message.reply("⚠️ Usage: <code>/broadcast message</code>", parse_mode=ParseMode.HTML)
+        return await message.reply(quote(f"{E_WARN} <b>{fancy('usage')}:</b> <code>/broadcast message</code>") + CREDITS, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
     msg_text = message.text.split(None, 1)[1]
     success, failed = 0, 0
-    m = await message.reply(f"{E_BOLT} <b>{fancy('broadcasting')}...</b>", parse_mode=ParseMode.HTML)
+    m = await message.reply(quote(f"{E_BOLT} <b>{fancy('broadcasting')}...</b>") + CREDITS, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
     for chat_id in APPROVED_GROUPS:
         try:
-            await app.send_message(chat_id, f"{E_BELL} <b>Broadcast</b>\n\n{esc(msg_text)}{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+            await app.send_message(chat_id, quote(f"{E_BELL} <b>{fancy('broadcast')}</b>\n\n{esc(msg_text)}") + CREDITS, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
             success += 1
         except Exception:
             failed += 1
-    await m.edit_text(f"{E_CHECK} <b>{fancy('broadcast complete')}!</b>\n{fancy('sent')}: {success} | {fancy('failed')}: {failed}{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+    await m.edit_text(quote(f"{E_CHECK} <b>{fancy('broadcast complete')}!</b>\n{fancy('sent')}: {success} | {fancy('failed')}: {failed}") + CREDITS, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
 
 
 @app.on_message(filters.command("reload") & filters.group)
