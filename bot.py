@@ -33,7 +33,7 @@ load_dotenv()
 API_ID = int(os.environ.get("API_ID", "33181534"))
 API_HASH = os.environ.get("API_HASH", "ef2c1ed56bb1fc743b3fbc244582efbb")
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "8524475183:AAGglXOt2oLCyv2N1vC_R_1gV7T9dvEOWfI")
-SESSION_STRING = os.environ.get("SESSION_STRING", "BQH6T14ALjIjmZAb8MlRkWdpYDT3va81anw3Qf1RFcqA46KnAbzyjFIikJkEjQ98jz0XUn97iuQg0XmrtVw7Ul5OIuzlpahfD5UyWY94aMpf9-WwyZi6V1N0mKKLTMXIY_1SZuV_S4VDNWGCSXEAuwZ41JJdvrxSrIavDjp50667qAGinuVw40QeKbs3Q2XooskSvzRqh1O0UxQBMddBDE83eG9ViW-S5X_2nqUzhZTP_-YhZ9m7xjWf1NwsdoCqf0cT6aYniKt38lb5D0uyq_s72BCRqZhSEb2S_ZD2LCycZ80g9rXeMFNrH7CinhxgjYz5O2iyHzKuJmH7Jvkhl8BruYeIXwAAAAILtc1CAA")
+SESSION_STRING = os.environ.get("SESSION_STRING", "BQH6T14ApBK2D7AX4O2MaHlvmZ76wfRt8KrfjwT0JUO7C5fTn8RDKC3SkrUi-faERDoHEpcopRngCMHALCHajgUWihnhIQnhckPbkPf976zhd-sinhjn6A2--nKJYN4U-LzgyePYwNAFqVcXTyI2aUBWI9fGFZuf8lcas7v-hIddaw3wug_zjaK4bgjae8w7DpqFr3m97PSUv8g-gxe6t3QhdyIZ2ZytGLr8mphTpJTsFVi9zCRvzWt5_W5iVY4-gu7oeZ9RrvxmguZ-h4Mp-XJzEPLeJlRlMKZiaokegtKf9Ue81fXwm5lR-tbwKFArNhxeNvGtIATzR8pM6tb_wC5ZW_bj6QAAAAILtc1CAA")
 OWNER_ID = int(os.environ.get("OWNER_ID", "8242523973"))
 TMDB_API_KEY = os.environ.get("TMDB_API_KEY", "5995cbd90beb943f6e7f26745e31de73")  # get a free key at themoviedb.org
 SUPPORT_URL = os.environ.get("SUPPORT_URL", "https://t.me/MeowStreamSupport")
