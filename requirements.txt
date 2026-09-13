@@ -5,3 +5,4 @@ aiohttp
 flask
 gunicorn
 Pillow
+yt-dlp
