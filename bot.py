@@ -35,7 +35,7 @@ API_HASH = os.environ.get("API_HASH", "ef2c1ed56bb1fc743b3fbc244582efbb")
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "8524475183:AAGglXOt2oLCyv2N1vC_R_1gV7T9dvEOWfI")
 SESSION_STRING = os.environ.get("SESSION_STRING", "BQH6T14ALjIjmZAb8MlRkWdpYDT3va81anw3Qf1RFcqA46KnAbzyjFIikJkEjQ98jz0XUn97iuQg0XmrtVw7Ul5OIuzlpahfD5UyWY94aMpf9-WwyZi6V1N0mKKLTMXIY_1SZuV_S4VDNWGCSXEAuwZ41JJdvrxSrIavDjp50667qAGinuVw40QeKbs3Q2XooskSvzRqh1O0UxQBMddBDE83eG9ViW-S5X_2nqUzhZTP_-YhZ9m7xjWf1NwsdoCqf0cT6aYniKt38lb5D0uyq_s72BCRqZhSEb2S_ZD2LCycZ80g9rXeMFNrH7CinhxgjYz5O2iyHzKuJmH7Jvkhl8BruYeIXwAAAAILtc1CAA")
 OWNER_ID = int(os.environ.get("OWNER_ID", "8242523973"))
-TMDB_API_KEY = os.environ.get("TMDB_API_KEY", "")  # get a free key at themoviedb.org
+TMDB_API_KEY = os.environ.get("TMDB_API_KEY", "5995cbd90beb943f6e7f26745e31de73")  # get a free key at themoviedb.org
 SUPPORT_URL = os.environ.get("SUPPORT_URL", "https://t.me/MeowStreamSupport")
 UPDATES_URL = os.environ.get("UPDATES_URL", "https://t.me/MeowpawSupport")
 
