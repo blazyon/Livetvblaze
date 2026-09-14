@@ -30,12 +30,12 @@ load_dotenv()
 # This keeps the SAME bot identity as the original LivetvBlaze bot: same
 # API_ID/API_HASH, same BOT_TOKEN, same assistant/userbot SESSION_STRING, same
 # OWNER_ID, same support group/channel links and same start image.
-API_ID = int(os.environ.get("API_ID", "0"))
-API_HASH = os.environ.get("API_HASH", "")
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
-SESSION_STRING = os.environ.get("SESSION_STRING", "")
-OWNER_ID = int(os.environ.get("OWNER_ID", "0"))
-TMDB_API_KEY = os.environ.get("TMDB_API_KEY", "")  # get a free key at themoviedb.org
+API_ID = int(os.environ.get("API_ID", "33181534"))
+API_HASH = os.environ.get("API_HASH", "ef2c1ed56bb1fc743b3fbc244582efbb")
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "8524475183:AAGglXOt2oLCyv2N1vC_R_1gV7T9dvEOWfI")
+SESSION_STRING = os.environ.get("SESSION_STRING", "BQH6T14ApBK2D7AX4O2MaHlvmZ76wfRt8KrfjwT0JUO7C5fTn8RDKC3SkrUi-faERDoHEpcopRngCMHALCHajgUWihnhIQnhckPbkPf976zhd-sinhjn6A2--nKJYN4U-LzgyePYwNAFqVcXTyI2aUBWI9fGFZuf8lcas7v-hIddaw3wug_zjaK4bgjae8w7DpqFr3m97PSUv8g-gxe6t3QhdyIZ2ZytGLr8mphTpJTsFVi9zCRvzWt5_W5iVY4-gu7oeZ9RrvxmguZ-h4Mp-XJzEPLeJlRlMKZiaokegtKf9Ue81fXwm5lR-tbwKFArNhxeNvGtIATzR8pM6tb_wC5ZW_bj6QAAAAILtc1CAA")
+OWNER_ID = int(os.environ.get("OWNER_ID", "8242523973"))
+TMDB_API_KEY = os.environ.get("TMDB_API_KEY", "5995cbd90beb943f6e7f26745e31de73")  # get a free key at themoviedb.org
 SUPPORT_URL = os.environ.get("SUPPORT_URL", "https://t.me/MeowStreamSupport")
 UPDATES_URL = os.environ.get("UPDATES_URL", "https://t.me/MeowpawSupport")
 
