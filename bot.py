@@ -35,7 +35,7 @@ API_HASH = os.environ.get("API_HASH", "ef2c1ed56bb1fc743b3fbc244582efbb")
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "8524475183:AAGglXOt2oLCyv2N1vC_R_1gV7T9dvEOWfI")
 SESSION_STRING = os.environ.get("SESSION_STRING", "BQH6T14ApBK2D7AX4O2MaHlvmZ76wfRt8KrfjwT0JUO7C5fTn8RDKC3SkrUi-faERDoHEpcopRngCMHALCHajgUWihnhIQnhckPbkPf976zhd-sinhjn6A2--nKJYN4U-LzgyePYwNAFqVcXTyI2aUBWI9fGFZuf8lcas7v-hIddaw3wug_zjaK4bgjae8w7DpqFr3m97PSUv8g-gxe6t3QhdyIZ2ZytGLr8mphTpJTsFVi9zCRvzWt5_W5iVY4-gu7oeZ9RrvxmguZ-h4Mp-XJzEPLeJlRlMKZiaokegtKf9Ue81fXwm5lR-tbwKFArNhxeNvGtIATzR8pM6tb_wC5ZW_bj6QAAAAILtc1CAA")
 OWNER_ID = int(os.environ.get("OWNER_ID", "8242523973"))
-TMDB_API_KEY = os.environ.get("TMDB_API_KEY", "")  # get a free key at themoviedb.org
+TMDB_API_KEY = os.environ.get("TMDB_API_KEY", "5995cbd90beb943f6e7f26745e31de73")  # get a free key at themoviedb.org
 SUPPORT_URL = os.environ.get("SUPPORT_URL", "https://t.me/MeowStreamSupport")
 UPDATES_URL = os.environ.get("UPDATES_URL", "https://t.me/MeowpawSupport")
 
@@ -567,6 +567,10 @@ _YTDL_BASE_OPTS = {
     "noplaylist": True,
     "geo_bypass": True,
     "nocheckcertificate": True,
+    # Avoids the current YouTube/yt-dlp "The page needs to be reloaded" bug, which mainly
+    # hits the "web"/"tv_downgraded" clients (especially when cookies are attached).
+    # android/ios/web_safari don't need the JS-challenge solver and are more stable.
+    "extractor_args": {"youtube": {"player_client": ["android", "ios", "web_safari", "web"]}},
 }
 if os.path.isfile(COOKIES_FILE):
     _YTDL_BASE_OPTS["cookiefile"] = COOKIES_FILE
@@ -585,12 +589,20 @@ def _clear_music_state(chat_id):
 
 def _ytdl_search_sync(query: str):
     opts = {**_YTDL_BASE_OPTS, "default_search": "ytsearch1", "skip_download": True}
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        info = ydl.extract_info(query, download=False)
-        if info and "entries" in info:
-            entries = [e for e in info["entries"] if e]
-            info = entries[0] if entries else None
-        return info
+    last_err = None
+    for attempt in range(2):  # one retry — YouTube's "page needs to be reloaded" error is often transient
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(query, download=False)
+                if info and "entries" in info:
+                    entries = [e for e in info["entries"] if e]
+                    info = entries[0] if entries else None
+                return info
+        except Exception as e:
+            last_err = e
+            if attempt == 0:
+                time.sleep(1.5)
+    raise last_err
 
 
 async def yt_search(query: str):
@@ -629,12 +641,17 @@ def _ytdl_download_sync(video_id: str, video: bool):
     if video:
         opts["merge_output_format"] = "mp4"
     url = f"https://www.youtube.com/watch?v={video_id}"
-    with yt_dlp.YoutubeDL(opts) as ydl:
+    for attempt in range(2):  # one retry — YouTube's "page needs to be reloaded" error is often transient
         try:
-            ydl.download([url])
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                ydl.download([url])
+            break
         except Exception as e:
-            print(f"⚠️ music download failed for {video_id}: {e}")
-            return None
+            print(f"⚠️ music download failed for {video_id} (attempt {attempt + 1}/2): {e}")
+            if attempt == 0:
+                time.sleep(1.5)
+            else:
+                return None
     found = glob.glob(os.path.join(DOWNLOADS_DIR, f"{video_id}.*"))
     return found[0] if found else None
 
@@ -1572,6 +1589,27 @@ _watchdog_fail_counts = {}  # chat_id -> consecutive failed checks
 WATCHDOG_FAILS_BEFORE_RESTART = 3  # ~3 checks (3 min at 60s interval) of confirmed failure before we touch a live stream
 
 
+async def _check_call_alive(chat_id):
+    """
+    Best-effort liveness check that works across different py-tgcalls builds —
+    newer versions (e.g. 2.3.x on NTgCalls) dropped get_call(), so we try a
+    few known alternatives before giving up.
+    """
+    if hasattr(call_py, "get_call"):
+        return await call_py.get_call(chat_id)
+    if hasattr(call_py, "played_time"):
+        return await call_py.played_time(chat_id)
+    calls_attr = getattr(call_py, "calls", None)
+    if calls_attr is not None:
+        active = calls_attr() if callable(calls_attr) else calls_attr
+        if chat_id not in active:
+            raise RuntimeError(f"{chat_id} is not in this build's active-calls list")
+        return
+    raise AttributeError(
+        "no supported liveness-check method (get_call/played_time/calls) found on this py-tgcalls build"
+    )
+
+
 async def stream_watchdog():
     """
     Periodically checks active calls. Only restarts a stream after several
@@ -1579,15 +1617,17 @@ async def stream_watchdog():
     as proof the call died, to avoid falsely restarting healthy streams
     (which was likely the cause of streams "randomly restarting").
     """
-    if not hasattr(call_py, "get_call"):
-        print("⚠️ Watchdog disabled: this py-tgcalls build has no get_call() — liveness can't be verified this way. Tell me what version you have and I'll adjust.")
+    probe_ok = any(hasattr(call_py, name) for name in ("get_call", "played_time", "calls"))
+    if not probe_ok:
+        print("⚠️ Watchdog disabled: this py-tgcalls build exposes none of get_call()/played_time()/calls — "
+              "auto-recovery of dropped streams is off, but playback itself is unaffected.")
         return
 
     while True:
         await asyncio.sleep(60)
         for chat_id, stream in list(CURRENT_STREAMS.items()):
             try:
-                await call_py.get_call(chat_id)
+                await _check_call_alive(chat_id)
                 _watchdog_fail_counts[chat_id] = 0  # healthy — reset
             except Exception as e:
                 fails = _watchdog_fail_counts.get(chat_id, 0) + 1

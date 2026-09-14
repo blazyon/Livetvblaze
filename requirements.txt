@@ -6,4 +6,4 @@ flask
 gunicorn
 Pillow
 python-dotenv
-yt-dlp
+yt-dlp[default]
