@@ -30,12 +30,12 @@ load_dotenv()
 # This keeps the SAME bot identity as the original LivetvBlaze bot: same
 # API_ID/API_HASH, same BOT_TOKEN, same assistant/userbot SESSION_STRING, same
 # OWNER_ID, same support group/channel links and same start image.
-API_ID = int(os.environ.get("API_ID", "33181534"))
-API_HASH = os.environ.get("API_HASH", "ef2c1ed56bb1fc743b3fbc244582efbb")
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "8524475183:AAGglXOt2oLCyv2N1vC_R_1gV7T9dvEOWfI")
-SESSION_STRING = os.environ.get("SESSION_STRING", "BQH6T14ApBK2D7AX4O2MaHlvmZ76wfRt8KrfjwT0JUO7C5fTn8RDKC3SkrUi-faERDoHEpcopRngCMHALCHajgUWihnhIQnhckPbkPf976zhd-sinhjn6A2--nKJYN4U-LzgyePYwNAFqVcXTyI2aUBWI9fGFZuf8lcas7v-hIddaw3wug_zjaK4bgjae8w7DpqFr3m97PSUv8g-gxe6t3QhdyIZ2ZytGLr8mphTpJTsFVi9zCRvzWt5_W5iVY4-gu7oeZ9RrvxmguZ-h4Mp-XJzEPLeJlRlMKZiaokegtKf9Ue81fXwm5lR-tbwKFArNhxeNvGtIATzR8pM6tb_wC5ZW_bj6QAAAAILtc1CAA")
-OWNER_ID = int(os.environ.get("OWNER_ID", "8242523973"))
-TMDB_API_KEY = os.environ.get("TMDB_API_KEY", "5995cbd90beb943f6e7f26745e31de73")  # get a free key at themoviedb.org
+API_ID = int(os.environ.get("API_ID", "0"))
+API_HASH = os.environ.get("API_HASH", "")
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
+SESSION_STRING = os.environ.get("SESSION_STRING", "")
+OWNER_ID = int(os.environ.get("OWNER_ID", "0"))
+TMDB_API_KEY = os.environ.get("TMDB_API_KEY", "")  # get a free key at themoviedb.org
 SUPPORT_URL = os.environ.get("SUPPORT_URL", "https://t.me/MeowStreamSupport")
 UPDATES_URL = os.environ.get("UPDATES_URL", "https://t.me/MeowpawSupport")
 
@@ -52,6 +52,9 @@ DURATION_LIMIT = int(os.environ.get("DURATION_LIMIT", "0")) * 60  # minutes -> s
 QUEUE_LIMIT = int(os.environ.get("QUEUE_LIMIT", "20"))
 DOWNLOADS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "downloads")
 os.makedirs(DOWNLOADS_DIR, exist_ok=True)
+# Netscape-format cookies file (export from your browser) used to avoid YouTube's
+# "Sign in to confirm you're not a bot" block. See README for how to generate one.
+COOKIES_FILE = os.environ.get("COOKIES_FILE", os.path.join(os.path.dirname(os.path.abspath(__file__)), "cookies.txt"))
 
 # ================= Storage & Settings =================
 CHANNELS, MOVIES, SERIES = {}, {}, {}
@@ -119,8 +122,27 @@ _FANCY = {
 }
 
 
-def fancy(text: str) -> str:
+def _smallcaps(text: str) -> str:
+    """Converts every letter to its small-caps unicode form, no capitalization."""
     return "".join(_FANCY.get(c.lower(), c) for c in text)
+
+
+def fancy(text: str) -> str:
+    """Title-case small caps used for headings/labels across the whole bot:
+    a normal capital first letter on every word, small caps for the rest
+    (e.g. 'now streaming' -> 'Nᴏᴡ Sᴛʀᴇᴀᴍɪɴɢ')."""
+    return " ".join(
+        (word[0].upper() + _smallcaps(word[1:])) if word else word
+        for word in text.split(" ")
+    )
+
+
+def sc(text: str) -> str:
+    """Case-preserving small caps: lowercase letters become small-caps unicode
+    glyphs, UPPERCASE letters/digits/punctuation/emoji pass through untouched.
+    Use this (instead of fancy()) whenever exact mixed-case matters, e.g.
+    sc('Requested by') -> 'Rᴇǫᴜᴇsᴛᴇᴅ ʙʏ'."""
+    return "".join(_FANCY.get(c, c) for c in text)
 
 
 BOT_NAME = f"{fancy('meow stream')} 📺"
@@ -393,12 +415,12 @@ async def ensure_assistant_in_chat(chat_id, message):
         try:
             link = (await app.get_chat(chat_id)).invite_link or await app.export_chat_invite_link(chat_id)
             await user_app.join_chat(link)
-            await message.reply(f"🤖 <b>Assistant Joined Group!</b>{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+            await message.reply(f"🤖 <b>Assɪsᴛᴀɴᴛ Jᴏɪɴᴇᴅ Gʀᴏᴜᴘ!</b>{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
             return True
         except UserAlreadyParticipant:
             return True
         except Exception as e:
-            await message.reply(f"{E_WARN} <b>Assistant Join Failed!</b>\n<code>{esc(str(e))}</code>{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+            await message.reply(f"{E_WARN} <b>Assɪsᴛᴀɴᴛ Jᴏɪɴ Fᴀɪʟᴇᴅ!</b>\n<code>{esc(str(e))}</code>{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
             return False
 
 
@@ -438,7 +460,7 @@ def check_approval(func):
         is_owner = message.from_user.id == OWNER_ID
         if is_group and not is_approved and not is_owner:
             return await message.reply(
-                quote(f"{E_DENY} <b>ACCESS DENIED</b>\nThis Group (<code>{message.chat.id}</code>) is not authorized.") + CREDITS,
+                quote(f"{E_DENY} <b>Aᴄᴄᴇss Dᴇɴɪᴇᴅ</b>\nThis Group (<code>{message.chat.id}</code>) is not authorized.") + CREDITS,
                 parse_mode=ParseMode.HTML, disable_web_page_preview=True,
             )
         return await func(client, message)
@@ -546,6 +568,13 @@ _YTDL_BASE_OPTS = {
     "geo_bypass": True,
     "nocheckcertificate": True,
 }
+if os.path.isfile(COOKIES_FILE):
+    _YTDL_BASE_OPTS["cookiefile"] = COOKIES_FILE
+    print(f"🍪 yt-dlp: using cookies from {COOKIES_FILE}")
+else:
+    print(f"⚠️ yt-dlp: no cookies file found at {COOKIES_FILE} — YouTube may block some requests with "
+          f"'Sign in to confirm you're not a bot'. Export your browser's YouTube cookies to that path "
+          f"(Netscape format) to fix this.")
 
 
 def _clear_music_state(chat_id):
@@ -624,13 +653,38 @@ def _music_keyboard(chat_id, paused=False):
     ])
 
 
-def _music_card_text(track):
-    dur = fmt_time(track["duration"]) if track.get("duration") else "Live/Unknown"
-    kind = "Video" if track.get("video") else "Audio"
+def _dur_short(seconds: int) -> str:
+    """mm:ss without a leading zero on minutes, e.g. 279 -> '4:39' (matches the card spec)."""
+    seconds = max(0, int(seconds))
+    m, s = divmod(seconds, 60)
+    return f"{m}:{s:02d}"
+
+
+def _music_card_text(track, queue_position=None):
+    """
+    Renders the music status card in the requested style:
+      ➻ Started Streaming              (now playing)
+      ➲ Added To Queue At #N           (queued)
+
+      ✨ Title: <title>
+      ⏱ Duration: <m:ss> minutes
+      🥀 Requested by: <requester>
+    """
+    dur = f"{_dur_short(track['duration'])} {_smallcaps('minutes')}" if track.get("duration") else _smallcaps("live")
+    requester = track.get("requester", "someone")
+
+    if queue_position:
+        header = f"➲ {fancy('added to queue at')} #{queue_position}"
+        sep = " : "
+    else:
+        header = f"➻ {fancy('started streaming')}"
+        sep = ": "
+
     return quote(
-        f"{E_FIRE} <b>Now Playing ({kind})</b>\n\n"
-        f"🎵 <b>{esc(track['title'])}</b>\n"
-        f"⏱ {dur}  |  🙋 {esc(track.get('requester', 'someone'))}"
+        f"{header}\n\n"
+        f"✨ {fancy('title')}{sep}{esc(track['title'])}\n"
+        f"⏱ {fancy('duration')}{sep}{dur}\n"
+        f"🥀 {fancy('requested')} ʙʏ{sep}{requester}"
     ) + CREDITS
 
 
@@ -641,7 +695,7 @@ async def _play_music_track(chat_id, track, status_msg=None):
     if not file_path:
         if status_msg:
             try:
-                await status_msg.edit_text(quote(f"{E_WARN} <b>Couldn't fetch that track — skipping.</b>") + CREDITS, parse_mode=ParseMode.HTML)
+                await status_msg.edit_text(quote(f"{E_WARN} <b>{fancy('could not fetch that track, skipping')}</b>") + CREDITS, parse_mode=ParseMode.HTML)
             except Exception:
                 pass
         return await _music_play_next(chat_id)
@@ -658,7 +712,7 @@ async def _play_music_track(chat_id, track, status_msg=None):
     except Exception as e:
         if status_msg:
             try:
-                await status_msg.edit_text(quote(f"❌ <b>Playback failed:</b> <code>{esc(str(e)[:150])}</code>") + CREDITS, parse_mode=ParseMode.HTML)
+                await status_msg.edit_text(quote(f"❌ <b>{fancy('playback failed')}:</b> <code>{esc(str(e)[:150])}</code>") + CREDITS, parse_mode=ParseMode.HTML)
             except Exception:
                 pass
         return await _music_play_next(chat_id)
@@ -700,23 +754,23 @@ async def play_music(client, message):
         message.reply_to_message.text.strip() if message.reply_to_message and message.reply_to_message.text else None
     )
     if not query:
-        return await message.reply(quote(f"{E_WARN} <b>Usage:</b> <code>/{cmd} song name or YouTube link</code>") + CREDITS, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+        return await message.reply(quote(f"{E_WARN} <b>Usᴀɢᴇ:</b> <code>/{cmd} song name or YouTube link</code>") + CREDITS, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
 
     chat_id = message.chat.id
     if CURRENT_STREAMS.get(chat_id):
-        return await message.reply(quote(f"{E_WARN} <b>A Live TV/Movie/Series stream is already running here.</b>\nUse <code>/stopvc</code> first.") + CREDITS, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+        return await message.reply(quote(f"{E_WARN} <b>A Lɪᴠᴇ Tᴠ/Mᴏᴠɪᴇ/Sᴇʀɪᴇs Sᴛʀᴇᴀᴍ Is Aʟʀᴇᴀᴅʏ Rᴜɴɴɪɴɢ Hᴇʀᴇ.</b>\nUse <code>/stopvc</code> first.") + CREDITS, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
 
     queue = MUSIC_QUEUES.setdefault(chat_id, [])
     if len(queue) >= QUEUE_LIMIT:
-        return await message.reply(quote(f"{E_WARN} <b>Queue limit ({QUEUE_LIMIT}) reached.</b>") + CREDITS, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+        return await message.reply(quote(f"{E_WARN} <b>Qᴜᴇᴜᴇ Lɪᴍɪᴛ ({QUEUE_LIMIT}) Rᴇᴀᴄʜᴇᴅ.</b>") + CREDITS, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
 
-    msg = await message.reply(quote(f"{E_BOLT} <b>Searching:</b> {esc(query[:60])}"), parse_mode=ParseMode.HTML)
+    msg = await message.reply(quote(f"{E_BOLT} <b>Sᴇᴀʀᴄʜɪɴɢ:</b> {esc(query[:60])}"), parse_mode=ParseMode.HTML)
     track = await yt_search(query)
     if not track:
-        return await msg.edit_text(quote(f"❌ <b>No results found for:</b> {esc(query[:60])}") + CREDITS, parse_mode=ParseMode.HTML)
+        return await msg.edit_text(quote(f"❌ <b>Nᴏ Rᴇsᴜʟᴛs Fᴏᴜɴᴅ Fᴏʀ:</b> {esc(query[:60])}") + CREDITS, parse_mode=ParseMode.HTML)
 
     if DURATION_LIMIT and track["duration"] and track["duration"] > DURATION_LIMIT:
-        return await msg.edit_text(quote(f"{E_WARN} <b>Track too long</b> ({fmt_time(track['duration'])}). Limit is {fmt_time(DURATION_LIMIT)}.") + CREDITS, parse_mode=ParseMode.HTML)
+        return await msg.edit_text(quote(f"{E_WARN} <b>Tʀᴀᴄᴋ Tᴏᴏ Lᴏɴɢ</b> ({fmt_time(track['duration'])}). Limit is {fmt_time(DURATION_LIMIT)}.") + CREDITS, parse_mode=ParseMode.HTML)
 
     track["video"] = is_video
     track["requester"] = message.from_user.mention if message.from_user else "someone"
@@ -725,7 +779,7 @@ async def play_music(client, message):
 
     if chat_id in MUSIC_NOW:
         queue.append(track)
-        return await msg.edit_text(quote(f"{E_CHECK} <b>Queued (#{len(queue)}):</b> {esc(track['title'])}") + CREDITS, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+        return await msg.edit_text(_music_card_text(track, queue_position=len(queue)), parse_mode=ParseMode.HTML, disable_web_page_preview=True)
 
     await _wipe_chat_bot_messages(client, chat_id)
     await _play_music_track(chat_id, track, status_msg=msg)
@@ -735,10 +789,10 @@ async def play_music(client, message):
 async def skip_music(client, message):
     chat_id = message.chat.id
     if chat_id not in MUSIC_NOW:
-        return await message.reply(quote(f"❌ <b>Nothing is playing.</b>") + CREDITS, parse_mode=ParseMode.HTML)
+        return await message.reply(quote(f"❌ <b>Nᴏᴛʜɪɴɢ Is Pʟᴀʏɪɴɢ.</b>") + CREDITS, parse_mode=ParseMode.HTML)
     if not await is_admin_or_owner(client, chat_id, message.from_user.id):
         return await message.reply(quote(f"{E_DENY} Only group admins can skip.") + CREDITS, parse_mode=ParseMode.HTML)
-    await message.reply(quote(f"{E_UP} <b>Skipped.</b>") + CREDITS, parse_mode=ParseMode.HTML)
+    await message.reply(quote(f"{E_UP} <b>Sᴋɪᴘᴘᴇᴅ.</b>") + CREDITS, parse_mode=ParseMode.HTML)
     await _music_play_next(chat_id)
 
 
@@ -746,37 +800,37 @@ async def skip_music(client, message):
 async def pause_music(client, message):
     chat_id = message.chat.id
     if chat_id not in MUSIC_NOW:
-        return await message.reply(quote(f"❌ <b>Nothing is playing.</b>") + CREDITS, parse_mode=ParseMode.HTML)
+        return await message.reply(quote(f"❌ <b>Nᴏᴛʜɪɴɢ Is Pʟᴀʏɪɴɢ.</b>") + CREDITS, parse_mode=ParseMode.HTML)
     if not await is_admin_or_owner(client, chat_id, message.from_user.id):
         return await message.reply(quote(f"{E_DENY} Only group admins can pause.") + CREDITS, parse_mode=ParseMode.HTML)
     try:
         await call_py.pause(chat_id)
         MUSIC_PAUSED.add(chat_id)
-        await message.reply(quote(f"⏸ <b>Paused.</b>") + CREDITS, parse_mode=ParseMode.HTML)
+        await message.reply(quote(f"⏸ <b>Pᴀᴜsᴇᴅ.</b>") + CREDITS, parse_mode=ParseMode.HTML)
     except Exception as e:
-        await message.reply(quote(f"❌ <b>Couldn't pause:</b> <code>{esc(str(e)[:120])}</code>") + CREDITS, parse_mode=ParseMode.HTML)
+        await message.reply(quote(f"❌ <b>Cᴏᴜʟᴅɴ'ᴛ Pᴀᴜsᴇ:</b> <code>{esc(str(e)[:120])}</code>") + CREDITS, parse_mode=ParseMode.HTML)
 
 
 @app.on_message(filters.command("resume") & filters.group)
 async def resume_music(client, message):
     chat_id = message.chat.id
     if chat_id not in MUSIC_NOW:
-        return await message.reply(quote(f"❌ <b>Nothing is playing.</b>") + CREDITS, parse_mode=ParseMode.HTML)
+        return await message.reply(quote(f"❌ <b>Nᴏᴛʜɪɴɢ Is Pʟᴀʏɪɴɢ.</b>") + CREDITS, parse_mode=ParseMode.HTML)
     if not await is_admin_or_owner(client, chat_id, message.from_user.id):
         return await message.reply(quote(f"{E_DENY} Only group admins can resume.") + CREDITS, parse_mode=ParseMode.HTML)
     try:
         await call_py.resume(chat_id)
         MUSIC_PAUSED.discard(chat_id)
-        await message.reply(quote(f"▶️ <b>Resumed.</b>") + CREDITS, parse_mode=ParseMode.HTML)
+        await message.reply(quote(f"▶️ <b>Rᴇsᴜᴍᴇᴅ.</b>") + CREDITS, parse_mode=ParseMode.HTML)
     except Exception as e:
-        await message.reply(quote(f"❌ <b>Couldn't resume:</b> <code>{esc(str(e)[:120])}</code>") + CREDITS, parse_mode=ParseMode.HTML)
+        await message.reply(quote(f"❌ <b>Cᴏᴜʟᴅɴ'ᴛ Rᴇsᴜᴍᴇ:</b> <code>{esc(str(e)[:120])}</code>") + CREDITS, parse_mode=ParseMode.HTML)
 
 
 @app.on_message(filters.command(["stopmusic", "stopplay"]) & filters.group)
 async def stop_music_cmd(client, message):
     chat_id = message.chat.id
     if chat_id not in MUSIC_NOW and not MUSIC_QUEUES.get(chat_id):
-        return await message.reply(quote(f"❌ <b>Nothing is playing.</b>") + CREDITS, parse_mode=ParseMode.HTML)
+        return await message.reply(quote(f"❌ <b>Nᴏᴛʜɪɴɢ Is Pʟᴀʏɪɴɢ.</b>") + CREDITS, parse_mode=ParseMode.HTML)
     if not await is_admin_or_owner(client, chat_id, message.from_user.id):
         return await message.reply(quote(f"{E_DENY} Only group admins can stop music.") + CREDITS, parse_mode=ParseMode.HTML)
     _clear_music_state(chat_id)
@@ -784,7 +838,7 @@ async def stop_music_cmd(client, message):
         await call_py.leave_call(chat_id)
     except Exception:
         pass
-    await message.reply(quote(f"{E_STOP} <b>Music stopped, queue cleared.</b>") + CREDITS, parse_mode=ParseMode.HTML)
+    await message.reply(quote(f"{E_STOP} <b>Mᴜsɪᴄ Sᴛᴏᴘᴘᴇᴅ, Qᴜᴇᴜᴇ Cʟᴇᴀʀᴇᴅ.</b>") + CREDITS, parse_mode=ParseMode.HTML)
 
 
 @app.on_message(filters.command("queue") & filters.group)
@@ -793,7 +847,7 @@ async def show_queue(client, message):
     now = MUSIC_NOW.get(chat_id)
     queue = MUSIC_QUEUES.get(chat_id) or []
     if not now and not queue:
-        return await message.reply(quote("❌ <b>Queue is empty.</b>") + CREDITS, parse_mode=ParseMode.HTML)
+        return await message.reply(quote("❌ <b>Qᴜᴇᴜᴇ Is Eᴍᴘᴛʏ.</b>") + CREDITS, parse_mode=ParseMode.HTML)
     body = f"{E_FIRE} <b>{fancy('queue')}</b>\n\n"
     if now:
         body += f"▶️ <b>{esc(now['title'])}</b> (playing)\n\n"
@@ -900,10 +954,10 @@ async def _fetch_series_episodes(session, base_url, user, passwd, series_info):
 async def add_xtream_series_optimized(client, message):
     args = message.text.split()
     if len(args) != 4:
-        return await message.reply(f"{E_WARN} <b>Usage:</b> <code>/addxtreamseries URL User Pass</code>{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+        return await message.reply(f"{E_WARN} <b>Usᴀɢᴇ:</b> <code>/addxtreamseries URL User Pass</code>{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
 
     url, user, passwd = args[1].rstrip("/"), args[2], args[3]
-    msg = await message.reply(f"{E_BOLT} <b>Fetching Xtream Series list...</b>", parse_mode=ParseMode.HTML)
+    msg = await message.reply(f"{E_BOLT} <b>Fᴇᴛᴄʜɪɴɢ Xᴛʀᴇᴀᴍ Sᴇʀɪᴇs Lɪsᴛ...</b>", parse_mode=ParseMode.HTML)
 
     try:
         series_list_url = f"{url}/player_api.php?username={user}&password={passwd}&action=get_series"
@@ -928,7 +982,7 @@ async def add_xtream_series_optimized(client, message):
                 processed_count += 1
         save_data()
 
-        await msg.edit_text(f"{E_CHECK} <b>Scan Complete!</b>\nLoaded episodes for <b>{processed_count}</b> series from Xtream API!{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+        await msg.edit_text(f"{E_CHECK} <b>Sᴄᴀɴ Cᴏᴍᴘʟᴇᴛᴇ!</b>\nLoaded episodes for <b>{processed_count}</b> series from Xtream API!{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
 
     except Exception as e:
         await msg.edit_text(f"❌ An error occurred: <code>{esc(str(e)[:150])}</code>", parse_mode=ParseMode.HTML)
@@ -938,10 +992,10 @@ async def add_xtream_series_optimized(client, message):
 async def add_xtream_movies(client, message):
     args = message.text.split()
     if len(args) != 4:
-        return await message.reply(f"{E_WARN} <b>Usage:</b> <code>/addxtreammovies URL User Pass</code>{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+        return await message.reply(f"{E_WARN} <b>Usᴀɢᴇ:</b> <code>/addxtreammovies URL User Pass</code>{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
     url, user, passwd = args[1].rstrip("/"), args[2], args[3]
     api_url = f"{url}/player_api.php?username={user}&password={passwd}&action=get_vod_streams"
-    msg = await message.reply(f"{E_BOLT} <b>Fetching Xtream Movies...</b> This may take a moment.", parse_mode=ParseMode.HTML)
+    msg = await message.reply(f"{E_BOLT} <b>Fᴇᴛᴄʜɪɴɢ Xᴛʀᴇᴀᴍ Mᴏᴠɪᴇs...</b> This may take a moment.", parse_mode=ParseMode.HTML)
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(api_url, timeout=60) as resp:
@@ -956,7 +1010,7 @@ async def add_xtream_movies(client, message):
                             MOVIES[name] = stream_url
                             count += 1
                     save_data()
-                    await msg.edit_text(f"{E_CHECK} <b>Loaded {count} Movies from Xtream API!</b>{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+                    await msg.edit_text(f"{E_CHECK} <b>Lᴏᴀᴅᴇᴅ {count} Mᴏᴠɪᴇs Fʀᴏᴍ Xᴛʀᴇᴀᴍ Aᴘɪ!</b>{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
                 else:
                     await msg.edit_text(f"❌ Error Status: {resp.status}")
     except Exception as e:
@@ -968,10 +1022,10 @@ async def add_xtream_channels(client, message):
     """Bonus command: imports live channels (+ their stream_icon logos) from an Xtream panel."""
     args = message.text.split()
     if len(args) != 4:
-        return await message.reply(f"{E_WARN} <b>Usage:</b> <code>/addxtreamchannels URL User Pass</code>{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+        return await message.reply(f"{E_WARN} <b>Usᴀɢᴇ:</b> <code>/addxtreamchannels URL User Pass</code>{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
     url, user, passwd = args[1].rstrip("/"), args[2], args[3]
     api_url = f"{url}/player_api.php?username={user}&password={passwd}&action=get_live_streams"
-    msg = await message.reply(f"{E_BOLT} <b>Fetching Xtream Live Channels...</b>", parse_mode=ParseMode.HTML)
+    msg = await message.reply(f"{E_BOLT} <b>Fᴇᴛᴄʜɪɴɢ Xᴛʀᴇᴀᴍ Lɪᴠᴇ Cʜᴀɴɴᴇʟs...</b>", parse_mode=ParseMode.HTML)
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(api_url, timeout=60) as resp:
@@ -991,7 +1045,7 @@ async def add_xtream_channels(client, message):
                 logo_count += 1
             count += 1
         save_data()
-        await msg.edit_text(f"{E_CHECK} <b>Loaded {count} Channels</b> ({logo_count} with logos) from Xtream API!{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+        await msg.edit_text(f"{E_CHECK} <b>Lᴏᴀᴅᴇᴅ {count} Cʜᴀɴɴᴇʟs</b> ({logo_count} with logos) from Xtream API!{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
     except Exception as e:
         await msg.edit_text(f"❌ Failed: <code>{esc(str(e)[:150])}</code>", parse_mode=ParseMode.HTML)
 
@@ -1001,10 +1055,10 @@ async def add_channel_logo_xtream(client, message):
     """Re-syncs logos only (doesn't touch existing channel URLs) from an Xtream panel's stream_icon field."""
     args = message.text.split()
     if len(args) != 4:
-        return await message.reply(f"{E_WARN} <b>Usage:</b> <code>/addchannellogoxtremecode URL User Pass</code>{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+        return await message.reply(f"{E_WARN} <b>Usᴀɢᴇ:</b> <code>/addchannellogoxtremecode URL User Pass</code>{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
     url, user, passwd = args[1].rstrip("/"), args[2], args[3]
     api_url = f"{url}/player_api.php?username={user}&password={passwd}&action=get_live_streams"
-    msg = await message.reply(f"{E_BOLT} <b>Syncing channel logos...</b>", parse_mode=ParseMode.HTML)
+    msg = await message.reply(f"{E_BOLT} <b>Sʏɴᴄɪɴɢ Cʜᴀɴɴᴇʟ Lᴏɢᴏs...</b>", parse_mode=ParseMode.HTML)
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(api_url, timeout=60) as resp:
@@ -1019,7 +1073,7 @@ async def add_channel_logo_xtream(client, message):
                 CHANNEL_LOGOS[name] = icon
                 matched += 1
         save_data()
-        await msg.edit_text(f"{E_CHECK} <b>Synced logos for {matched} existing channels.</b>{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+        await msg.edit_text(f"{E_CHECK} <b>Sʏɴᴄᴇᴅ Lᴏɢᴏs Fᴏʀ {matched} Exɪsᴛɪɴɢ Cʜᴀɴɴᴇʟs.</b>{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
     except Exception as e:
         await msg.edit_text(f"❌ Failed: <code>{esc(str(e)[:150])}</code>", parse_mode=ParseMode.HTML)
 
@@ -1033,7 +1087,7 @@ async def add_channel_logo_manual(client, message):
     """
     args = message.text.split(None, 1)
     if len(args) < 2:
-        return await message.reply(f"{E_WARN} <b>Usage:</b> reply to a photo with <code>/addchannellogo Channel Name</code>, or <code>/addchannellogo Channel Name https://image-url</code>{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+        return await message.reply(f"{E_WARN} <b>Usᴀɢᴇ:</b> reply to a photo with <code>/addchannellogo Channel Name</code>, or <code>/addchannellogo Channel Name https://image-url</code>{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
 
     rest = args[1].strip()
     url_match = re.search(r'(https?://\S+)$', rest)
@@ -1044,7 +1098,7 @@ async def add_channel_logo_manual(client, message):
             return await message.reply(f"❌ No channel named <b>{esc(name.title())}</b> found.{CREDITS}", parse_mode=ParseMode.HTML)
         CHANNEL_LOGOS[name] = logo_url
         save_data()
-        return await message.reply(f"{E_CHECK} <b>Logo set for {esc(name.title())}!</b>{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+        return await message.reply(f"{E_CHECK} <b>Lᴏɢᴏ Sᴇᴛ Fᴏʀ {esc(name.title())}!</b>{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
 
     name = cleanup_name(rest)
     if name not in CHANNELS:
@@ -1055,10 +1109,10 @@ async def add_channel_logo_manual(client, message):
         uploaded = await client.send_photo(message.chat.id, file_path)
         CHANNEL_LOGOS[name] = uploaded.photo.file_id
         save_data()
-        return await message.reply(f"{E_CHECK} <b>Logo set for {esc(name.title())}!</b>{CREDITS}", parse_mode=ParseMode.HTML)
+        return await message.reply(f"{E_CHECK} <b>Lᴏɢᴏ Sᴇᴛ Fᴏʀ {esc(name.title())}!</b>{CREDITS}", parse_mode=ParseMode.HTML)
 
     PENDING_LOGO_UPLOAD[message.from_user.id] = name
-    await message.reply(f"{E_CAM} <b>Now send the logo image</b> for <b>{esc(name.title())}</b> (as a photo).{CREDITS}", parse_mode=ParseMode.HTML)
+    await message.reply(f"{E_CAM} <b>Nᴏᴡ Sᴇɴᴅ Tʜᴇ Lᴏɢᴏ Iᴍᴀɢᴇ</b> for <b>{esc(name.title())}</b> (as a photo).{CREDITS}", parse_mode=ParseMode.HTML)
 
 
 @app.on_message(filters.photo & filters.user(OWNER_ID) & filters.private)
@@ -1068,14 +1122,14 @@ async def receive_pending_logo(client, message):
         return
     CHANNEL_LOGOS[name] = message.photo.file_id
     save_data()
-    await message.reply(f"{E_CHECK} <b>Logo set for {esc(name.title())}!</b>{CREDITS}", parse_mode=ParseMode.HTML)
+    await message.reply(f"{E_CHECK} <b>Lᴏɢᴏ Sᴇᴛ Fᴏʀ {esc(name.title())}!</b>{CREDITS}", parse_mode=ParseMode.HTML)
 
 
 # ================= LIST COMMANDS =================
 @app.on_message(filters.command(["channels", "allchannels"]))
 async def show_channels(client, message):
     if not CHANNELS:
-        return await message.reply(quote(f"❌ <b>No Channels Found.</b>") + CREDITS, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+        return await message.reply(quote(f"❌ <b>Nᴏ Cʜᴀɴɴᴇʟs Fᴏᴜɴᴅ.</b>") + CREDITS, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
 
     if len(CHANNELS) > LIST_FILE_THRESHOLD:
         text_content = "📺 All Available Channels\n\n" + "\n".join([f"{idx+1}. {name.title()}" for idx, name in enumerate(CHANNELS.keys())])
@@ -1092,7 +1146,7 @@ async def show_channels(client, message):
 @app.on_message(filters.command("movies"))
 async def show_movies(client, message):
     if not MOVIES:
-        return await message.reply(quote(f"❌ <b>No Movies Found.</b>") + CREDITS, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+        return await message.reply(quote(f"❌ <b>Nᴏ Mᴏᴠɪᴇs Fᴏᴜɴᴅ.</b>") + CREDITS, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
 
     if len(MOVIES) > LIST_FILE_THRESHOLD:
         text_content = "🎬 All Available Movies\n\n" + "\n".join([f"{idx+1}. {name.title()}" for idx, name in enumerate(MOVIES.keys())])
@@ -1109,7 +1163,7 @@ async def show_movies(client, message):
 @app.on_message(filters.command("series"))
 async def show_series(client, message):
     if not SERIES:
-        return await message.reply(quote(f"❌ <b>No Series Found.</b>") + CREDITS, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+        return await message.reply(quote(f"❌ <b>Nᴏ Sᴇʀɪᴇs Fᴏᴜɴᴅ.</b>") + CREDITS, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
 
     if len(SERIES) > LIST_FILE_THRESHOLD:
         text_content = "🍿 All Available Series\n\n"
@@ -1145,7 +1199,7 @@ async def stream_media(client, message):
 
     matches = [name for name in db if query in name]
     if not matches:
-        return await message.reply(quote(f"❌ <b>No {media_type} found matching that name!</b>") + CREDITS, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+        return await message.reply(quote(f"❌ <b>Nᴏ {media_type} Fᴏᴜɴᴅ Mᴀᴛᴄʜɪɴɢ Tʜᴀᴛ Nᴀᴍᴇ!</b>") + CREDITS, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
 
     if len(matches) == 1:
         return await _start_stream(client, message, matches[0], media_type, raw_query=" ".join(message.command[1:]), user_message=message)
@@ -1156,7 +1210,7 @@ async def stream_media(client, message):
         PLAY_REQUESTS[req_id] = (name, " ".join(message.command[1:]))
         buttons.append([InlineKeyboardButton(name.title(), callback_data=f"resolve_{media_type}_{req_id}")])
 
-    picker = await message.reply(quote(f"🤔 <b>Found multiple results for {esc(query.title())}. Please choose one:</b>"), parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(buttons))
+    picker = await message.reply(quote(f"🤔 <b>Fᴏᴜɴᴅ Mᴜʟᴛɪᴘʟᴇ Rᴇsᴜʟᴛs Fᴏʀ {esc(query.title())}. Pʟᴇᴀsᴇ Cʜᴏᴏsᴇ Oɴᴇ:</b>"), parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(buttons))
     _track_msg(message.chat.id, picker)
     try:
         await message.delete()
@@ -1259,7 +1313,7 @@ async def _launch_stream(client, message, name, media_type, ep_code, display_nam
     await _wipe_chat_bot_messages(client, chat_id)
     _clear_music_state(chat_id)  # a live TV/movie/series stream takes over the voice chat from music
 
-    msg = await message.reply(quote(f"{E_BOLT} <b>Initializing {type_label}...</b>"), parse_mode=ParseMode.HTML)
+    msg = await message.reply(quote(f"{E_BOLT} <b>Iɴɪᴛɪᴀʟɪᴢɪɴɢ {type_label}...</b>"), parse_mode=ParseMode.HTML)
     _track_msg(chat_id, msg)
 
     quality = VideoQuality.HD_720p
@@ -1268,7 +1322,7 @@ async def _launch_stream(client, message, name, media_type, ep_code, display_nam
     try:
         await robust_play(chat_id, stream)
     except Exception as e:
-        return await msg.edit_text(quote(f"❌ <b>Stream Failed!</b>\n<code>{esc(str(e)[:150])}</code>") + CREDITS, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+        return await msg.edit_text(quote(f"❌ <b>Sᴛʀᴇᴀᴍ Fᴀɪʟᴇᴅ!</b>\n<code>{esc(str(e)[:150])}</code>") + CREDITS, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
 
     token = uuid.uuid4().hex
     tmdb_info = None
@@ -1344,9 +1398,9 @@ async def _delete_after(message, delay_seconds):
 def _render_stream_card(display_name, type_label, quality):
     return quote(
         f"{E_SPARK} <b>{fancy('now streaming')}</b>\n\n"
-        f"❖ <b>Title:</b> {esc(display_name)}\n"
-        f"❖ <b>Type:</b> {type_label}\n"
-        f"❖ <b>Quality:</b> {quality} {E_CHECK}"
+        f"❖ <b>Tɪᴛʟᴇ:</b> {esc(display_name)}\n"
+        f"❖ <b>Tʏᴘᴇ:</b> {type_label}\n"
+        f"❖ <b>Qᴜᴀʟɪᴛʏ:</b> {quality} {E_CHECK}"
     ) + CREDITS
 
 
@@ -1508,9 +1562,9 @@ async def stop_vc(client, message):
     had_stream = message.chat.id in CURRENT_STREAMS
     await _do_stop(message.chat.id)
     if had_stream:
-        await message.reply(quote(f"{E_STOP} <b>Stream Stopped.</b>") + CREDITS, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+        await message.reply(quote(f"{E_STOP} <b>Sᴛʀᴇᴀᴍ Sᴛᴏᴘᴘᴇᴅ.</b>") + CREDITS, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
     else:
-        await message.reply(quote(f"❌ <b>No active stream to stop.</b>") + CREDITS, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+        await message.reply(quote(f"❌ <b>Nᴏ Aᴄᴛɪᴠᴇ Sᴛʀᴇᴀᴍ Tᴏ Sᴛᴏᴘ.</b>") + CREDITS, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
 
 
 # ================= Health check / stuck-stream watchdog =================
@@ -1582,7 +1636,7 @@ def _start_keyboard():
 
 COMMANDS_TEXT = quote(
     f"{E_BOLT} <b>{fancy('commands')}</b>\n\n"
-    f"<b>📺 Live TV / Movies / Series</b>\n"
+    f"<b>📺 Lɪᴠᴇ Tᴠ / Mᴏᴠɪᴇs / Sᴇʀɪᴇs</b>\n"
     f"❖ <code>/channels</code> — Browse Live TV\n"
     f"❖ <code>/movies</code> — Browse Movies\n"
     f"❖ <code>/series</code> — Browse Series\n"
@@ -1591,7 +1645,7 @@ COMMANDS_TEXT = quote(
     f"❖ <code>/playseries name - s01e01</code> — Play Series\n"
     f"❖ <code>/seek mm:ss</code> — Jump to a timestamp\n"
     f"❖ <code>/stopvc</code> — Stop Current Stream (group admins only)\n\n"
-    f"<b>🎵 Music</b>\n"
+    f"<b>🎵 Mᴜsɪᴄ</b>\n"
     f"❖ <code>/play song name or link</code> — Play/Queue Audio\n"
     f"❖ <code>/vplay song name or link</code> — Play/Queue Video\n"
     f"❖ <code>/pause</code> / <code>/resume</code> — Pause / Resume\n"
@@ -1603,13 +1657,13 @@ COMMANDS_TEXT = quote(
 
 def _welcome_text(is_group: bool) -> str:
     if is_group:
-        return quote(f"{E_SPARK} <b>{fancy('meow stream')} 📺 is ready!</b>\nTap <b>📜 Commands</b> below to get started.") + CREDITS
+        return quote(f"{E_SPARK} <b>{fancy('meow stream')} 📺 Is Rᴇᴀᴅʏ!</b>\nTap <b>📜 Cᴏᴍᴍᴀɴᴅs</b> below to get started.") + CREDITS
     return quote(
-        f"{E_SPARK} <b>Welcome to {fancy('meow stream')} 📺</b> — the most advanced Telegram streaming bot.\n\n"
+        f"{E_SPARK} <b>Wᴇʟᴄᴏᴍᴇ Tᴏ {fancy('meow stream')} 📺</b> — the most advanced Telegram streaming bot.\n\n"
         f"{E_CAM} Live TV, Movies & Series, streamed straight into your group's voice chat.\n"
         f"{E_SIGNAL} Multiple quality options, seek/resume, auto-recovery on drops.\n"
         f"🎵 Plus a full YouTube music engine — queue, skip, pause/resume.\n\n"
-        f"Tap <b>📜 Commands</b> below to see everything I can do."
+        f"Tap <b>📜 Cᴏᴍᴍᴀɴᴅs</b> below to see everything I can do."
     ) + CREDITS
 
 
@@ -1651,14 +1705,14 @@ async def start_cmd_group(client, message):
 @app.on_message(filters.command("delchannel") & filters.user(OWNER_ID))
 async def del_channel(client, message):
     if len(message.command) < 2:
-        return await message.reply(quote(f"{E_WARN} <b>Usage:</b> <code>/delchannel Channel Name</code>") + CREDITS, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+        return await message.reply(quote(f"{E_WARN} <b>Usᴀɢᴇ:</b> <code>/delchannel Channel Name</code>") + CREDITS, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
     name = cleanup_name(" ".join(message.command[1:]))
     if name not in CHANNELS:
         return await message.reply(quote(f"❌ No channel named <b>{esc(name.title())}</b> found.") + CREDITS, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
     CHANNELS.pop(name, None)
     CHANNEL_LOGOS.pop(name, None)
     save_data()
-    await message.reply(quote(f"{E_CHECK} <b>Deleted channel:</b> {esc(name.title())}") + CREDITS, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+    await message.reply(quote(f"{E_CHECK} <b>Dᴇʟᴇᴛᴇᴅ Cʜᴀɴɴᴇʟ:</b> {esc(name.title())}") + CREDITS, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
 
 
 
@@ -1666,30 +1720,30 @@ async def del_channel(client, message):
 @app.on_message(filters.command("delallchannels") & filters.user(OWNER_ID))
 async def del_all_channels(client, message):
     CHANNELS.clear(); CHANNEL_LOGOS.clear(); save_data()
-    await message.reply(f"🗑️ <b>All Live TV channels deleted.</b>{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+    await message.reply(f"🗑️ <b>Aʟʟ Lɪᴠᴇ Tᴠ Cʜᴀɴɴᴇʟs Dᴇʟᴇᴛᴇᴅ.</b>{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
 
 
 @app.on_message(filters.command("delallmovies") & filters.user(OWNER_ID))
 async def del_all_movies(client, message):
     MOVIES.clear(); save_data()
-    await message.reply(f"🗑️ <b>All movies deleted.</b>{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+    await message.reply(f"🗑️ <b>Aʟʟ Mᴏᴠɪᴇs Dᴇʟᴇᴛᴇᴅ.</b>{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
 
 
 @app.on_message(filters.command("delallseries") & filters.user(OWNER_ID))
 async def del_all_series(client, message):
     SERIES.clear(); save_data()
-    await message.reply(f"🗑️ <b>All series deleted.</b>{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+    await message.reply(f"🗑️ <b>Aʟʟ Sᴇʀɪᴇs Dᴇʟᴇᴛᴇᴅ.</b>{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
 
 
 @app.on_message(filters.command("addchannel") & filters.user(OWNER_ID))
 async def add_manual_channel(client, message):
     args = message.text.split(None, 2)
     if len(args) < 3:
-        return await message.reply(f"{E_WARN} <b>Usage:</b> <code>/addchannel URL Channel Name</code>{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+        return await message.reply(f"{E_WARN} <b>Usᴀɢᴇ:</b> <code>/addchannel URL Channel Name</code>{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
     url, name = args[1], cleanup_name(args[2])
     CHANNELS[name] = url
     save_data()
-    await message.reply(f"{E_CHECK} <b>Channel Added:</b> {esc(name.title())}{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+    await message.reply(f"{E_CHECK} <b>Cʜᴀɴɴᴇʟ Aᴅᴅᴇᴅ:</b> {esc(name.title())}{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
 
 
 @app.on_message(filters.command("approve") & filters.user(OWNER_ID))
@@ -1717,12 +1771,12 @@ async def unapprove_group(client, message):
 @app.on_message(filters.command("botinfo") & filters.user(OWNER_ID))
 async def bot_info(client, message):
     body = (f"{E_SIGNAL} <b>{fancy('system info')}</b>\n\n"
-            f"📡 <b>Active Streams:</b> {len(CURRENT_STREAMS)}\n"
-            f"🎵 <b>Active Music Sessions:</b> {len(MUSIC_NOW)}\n"
-            f"📺 <b>Channels:</b> {len(CHANNELS)} | 🎬 <b>Movies:</b> {len(MOVIES)}\n"
-            f"🍿 <b>Series:</b> {len(SERIES)}\n"
-            f"🖼️ <b>Channel Logos:</b> {len(CHANNEL_LOGOS)}\n"
-            f"🛡️ <b>Approved Groups:</b> {len(APPROVED_GROUPS)}\n")
+            f"📡 <b>Aᴄᴛɪᴠᴇ Sᴛʀᴇᴀᴍs:</b> {len(CURRENT_STREAMS)}\n"
+            f"🎵 <b>Aᴄᴛɪᴠᴇ Mᴜsɪᴄ Sᴇssɪᴏɴs:</b> {len(MUSIC_NOW)}\n"
+            f"📺 <b>Cʜᴀɴɴᴇʟs:</b> {len(CHANNELS)} | 🎬 <b>Mᴏᴠɪᴇs:</b> {len(MOVIES)}\n"
+            f"🍿 <b>Sᴇʀɪᴇs:</b> {len(SERIES)}\n"
+            f"🖼️ <b>Cʜᴀɴɴᴇʟ Lᴏɢᴏs:</b> {len(CHANNEL_LOGOS)}\n"
+            f"🛡️ <b>Aᴘᴘʀᴏᴠᴇᴅ Gʀᴏᴜᴘs:</b> {len(APPROVED_GROUPS)}\n")
     for grp in APPROVED_GROUPS:
         body += f"├ <code>{grp}</code>\n"
     await message.reply(quote(body) + CREDITS, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
@@ -1734,14 +1788,14 @@ async def broadcast(client, message):
         return await message.reply("⚠️ Usage: <code>/broadcast message</code>", parse_mode=ParseMode.HTML)
     msg_text = message.text.split(None, 1)[1]
     success, failed = 0, 0
-    m = await message.reply(f"{E_BOLT} <b>Broadcasting...</b>", parse_mode=ParseMode.HTML)
+    m = await message.reply(f"{E_BOLT} <b>Bʀᴏᴀᴅᴄᴀsᴛɪɴɢ...</b>", parse_mode=ParseMode.HTML)
     for chat_id in APPROVED_GROUPS:
         try:
-            await app.send_message(chat_id, f"{E_BELL} <b>Broadcast</b>\n\n{esc(msg_text)}{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+            await app.send_message(chat_id, f"{E_BELL} <b>Bʀᴏᴀᴅᴄᴀsᴛ</b>\n\n{esc(msg_text)}{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
             success += 1
         except Exception:
             failed += 1
-    await m.edit_text(f"{E_CHECK} <b>Broadcast Complete!</b>\nSent: {success} | Failed: {failed}{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+    await m.edit_text(f"{E_CHECK} <b>Bʀᴏᴀᴅᴄᴀsᴛ Cᴏᴍᴘʟᴇᴛᴇ!</b>\nSent: {success} | Failed: {failed}{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
 
 
 # ================= Boot Sequence =================
@@ -1755,7 +1809,7 @@ async def main():
     print(f"✅ {BOT_NAME} System Online!")
     asyncio.create_task(stream_watchdog())
     try:
-        await app.send_message(OWNER_ID, f"🟢 <b>{BOT_NAME} Online!</b>{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+        await app.send_message(OWNER_ID, f"🟢 <b>{BOT_NAME} Oɴʟɪɴᴇ!</b>{CREDITS}", parse_mode=ParseMode.HTML, disable_web_page_preview=True)
     except Exception:
         pass
     await idle()
